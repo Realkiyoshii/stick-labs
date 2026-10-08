@@ -1294,7 +1294,7 @@ export default function App(): JSX.Element {
                         <span className="mono">stored: {stick.mouseDpi(pkt)}</span>
                       </div>
                       <div className="row wrap" style={{ gap: 8 }}>
-                        {[100, 200, 300].map((rate) => {
+                        {[100, 150, 200, 250, 300].map((rate) => {
                           const wire = Math.min(rate, 255)
                           const active = stick.mouseDpi(pkt) === wire
                           return (

@@ -62,8 +62,7 @@
       {
         "provider": "github",
         "owner": "Realkiyoshii",
-        "repo": "stick-labs",
-        "draft": false
+        "repo": "stick-labs"
       }
     ]
   }
