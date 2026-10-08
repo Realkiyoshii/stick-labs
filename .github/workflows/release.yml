@@ -1,0 +1,28 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node scripts/test.mjs tests/rawbytes.ts tests/models.ts tests/t3ce.ts
+      - run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Artifacts publish via electron-builder's `publish` config in
+      # package.json (both exes land on the Release). Tag must match the
+      # package.json version, e.g. tag v1.0.0 with version 1.0.0.

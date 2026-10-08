@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "module": "ESNext", "moduleResolution": "bundler", "noEmit": true },
+  "include": ["src/main/**/*", "src/shared/**/*", "src/preload/**/*"]
+}
