@@ -8,7 +8,6 @@ Stick-only Electron companion. No remap / macros / lighting / motion code.
 |---|---|---|
 | Bit depth 8–12 + raw unlock | `Fun_Data +16`, wire = `12 − bits` | standard buttons + raw wire 0–255 |
 | Polling rate 250–8K | `Fun_Data +14`, gear 0–5 | 1K/2K/4K/8K buttons (+250/500); RC runs on every gear |
-| RC filter (anti-jitter) per stick | `Fun_Data +17/+18`, wire = `level + 11` | −10…+10 slider, presets, step preview, raw wire 0–255 |
 | Deadzone 0.1% steps | stick `+3..+10`, u16BE ×10 | 4 sliders + Physics / Factory presets |
 | Response curve | stick `+14..+23`, 5× (x,y) | presets + plot + numeric table |
 | Gate / output | stick `+1,+27,+28,+29` | square gate, axis ratio, output type, mouse DPI |
