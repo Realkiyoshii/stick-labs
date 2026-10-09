@@ -29,6 +29,52 @@ export interface Candidate {
   manufacturer: string | undefined
 }
 
+/**
+ * Open an interface briefly and watch for a live input frame (any nonzero
+ * stick byte in a 0x12 report). Idle receivers stream all-zero frames.
+ * Returns null when the handle cannot be opened (held by another app) —
+ * unknown, never treated as idle.
+ */
+export async function probeLiveness(path: string, windowMs = 600): Promise<boolean | null> {
+  let handle: HIDInstance | null = null
+  try {
+    handle = new HIDModule.HID(path)
+  } catch {
+    return null
+  }
+  return new Promise((resolve) => {
+    let done = false
+    const finish = (v: boolean | null): void => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try {
+        handle?.removeAllListeners()
+        handle?.close()
+      } catch {
+        /* ignore */
+      }
+      resolve(v)
+    }
+    const timer = setTimeout(() => finish(false), windowMs)
+    handle!.on('data', (raw: Buffer) => {
+      if (raw.length > 4 && raw[0] === REPORT_INPUT && (raw[1] || raw[2] || raw[3] || raw[4])) {
+        finish(true)
+      }
+    })
+    handle!.on('error', () => finish(null))
+  })
+}
+
+/** All vendor interfaces, each tagged with a liveness probe result. */
+export async function discoverLive(): Promise<Array<Candidate & { live: boolean | null }>> {
+  const cands = discover()
+  const lives = await Promise.all(
+    cands.map((c) => probeLiveness(c.path).catch(() => null as boolean | null))
+  )
+  return cands.map((c, i) => ({ ...c, live: lives[i] }))
+}
+
 export interface DeviceStats {
   inputFrames: number
   responses: number

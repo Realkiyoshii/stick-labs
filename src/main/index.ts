@@ -5,7 +5,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { join } from 'node:path'
 import { Controller, type DeviceInfo } from './controller'
-import { discover } from './hid'
+import { discover, discoverLive } from './hid'
 import { PROFILE_LENGTH } from '../shared/protocol'
 
 const controller = new Controller()
@@ -39,8 +39,54 @@ controller.onInput(() => {
 })
 
 controller.transport.on('stats', (stats) => send('device:stats', stats))
+
+const sleepMs = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+let reconnecting = false
+let sessionEpoch = 0
+/**
+ * The pad drops its USB interface for ~1-2 s when a change is applied live
+ * (write to the running slot, or switch onto a changed slot). Instead of
+ * making the user Rescan + Connect by hand, re-open the first stable
+ * interface: the PID reappears before it is usable, so presence is
+ * re-checked after a gap before opening (same lesson as the write path).
+ * Gives up after ~30 s and falls back to manual reconnect.
+ */
+async function autoReconnect(reason: string): Promise<void> {
+  if (reconnecting) return
+  reconnecting = true
+  const epoch = sessionEpoch
+  try {
+    send('device:reconnecting', reason)
+    const deadline = Date.now() + 30000
+    while (Date.now() < deadline) {
+      if (epoch !== sessionEpoch || controller.transport.isOpen) return
+      await sleepMs(800)
+      if (epoch !== sessionEpoch || controller.transport.isOpen) return
+      const cands = discover()
+      const target = cands.find((c) => c.preferred) ?? cands[0]
+      if (!target) continue
+      await sleepMs(600)
+      if (epoch !== sessionEpoch || controller.transport.isOpen) return
+      if (!discover().some((c) => c.path === target.path)) continue
+      try {
+        const info = await controller.connect(target.path)
+        controller.attachInputDecoder()
+        controller.transport.startWatchdog(4000, () => void autoReconnect('silent'))
+        send('device:reconnected', info)
+        return
+      } catch {
+        /* keep trying until the deadline */
+      }
+    }
+    send('device:stale', controller.transport.currentPath)
+  } finally {
+    reconnecting = false
+  }
+}
+
 controller.transport.on('disconnected', (err: Error) => {
-  send('device:disconnected', err?.message ?? 'disconnected')
+  void autoReconnect(err?.message ?? 'disconnected')
 })
 
 function b64(bytes: Uint8Array): string {
@@ -59,14 +105,16 @@ function handle(channel: string, fn: (...args: any[]) => unknown): void {
   })
 }
 
-handle('device:discover', () => discover())
+handle('device:discover', () => discoverLive())
 handle('device:connect', async (path: string): Promise<DeviceInfo> => {
+  sessionEpoch++
   const info = await controller.connect(path)
   controller.attachInputDecoder()
-  controller.transport.startWatchdog(4000, () => send('device:stale', controller.transport.currentPath))
+  controller.transport.startWatchdog(4000, () => void autoReconnect('silent'))
   return info
 })
 handle('device:disconnect', () => {
+  sessionEpoch++
   controller.disconnect()
   return true
 })

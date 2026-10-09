@@ -12,7 +12,7 @@ async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
 
 const api = {
   discover: () =>
-    call<Array<{ path: string; productId: number; preferred: boolean; product: string | undefined; manufacturer: string | undefined }>>('device:discover'),
+    call<Array<{ path: string; productId: number; preferred: boolean; product: string | undefined; manufacturer: string | undefined; live: boolean | null }>>('device:discover'),
   connect: (path: string) =>
     call<{ firmware: string; dongle: string; currentProfile: number }>('device:connect', path),
   disconnect: () => call<boolean>('device:disconnect'),

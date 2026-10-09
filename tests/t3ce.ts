@@ -9,7 +9,7 @@
  *
  *   node scripts/test.mjs tests/t3ce.ts
  */
-import { GEOMETRIES, parseProfile, serializeProfile, stick, fun } from '../src/shared/profile.ts'
+import { GEOMETRIES, parseProfile, serializeProfile, stick, fun, looksLikeCEProfile } from '../src/shared/profile.ts'
 
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): void => {
@@ -77,9 +77,41 @@ for (let i = 0; i < blob.length; i++) if (blob[i] !== edited[i]) touched.push(i)
 const inStick0 = touched.every((o) => o >= 0x6e1 && o < 0x6e1 + 36)
 check('stick edit touches only its 36 bytes', touched.length > 0 && inStick0, `${touched.length} bytes @${touched[0]}`)
 
+// Family proof: synthetic CE blob passes, garbage and T3CE-head fail.
+{
+  const good = new Uint8Array(1070)
+  good[0x20 + 14] = 5
+  good[0x20 + 16] = 0
+  for (const s of [0, 1]) {
+    const base = 0x394 + s * 36
+    good[base + 0] = 1
+    good[base + 2] = 1
+    good[base + 3] = 0x00
+    good[base + 4] = 0x32
+    good[base + 5] = 0x03
+    good[base + 6] = 0xe8
+    good[base + 7] = 0x00
+    good[base + 8] = 0x00
+    good[base + 9] = 0x03
+    good[base + 10] = 0xe8
+    good[base + 29] = s + 1
+  }
+  check('synthetic CE blob passes family proof', looksLikeCEProfile(good) === true)
+  const bad = new Uint8Array(1070)
+  bad[0x394 + 5] = 0xff
+  bad[0x394 + 6] = 0xff // end deadzone absurd
+  check('deformed blob fails family proof', looksLikeCEProfile(bad) === false)
+  check('short blob fails family proof', looksLikeCEProfile(new Uint8Array(100)) === false)
+  const t3head = new Uint8Array(1070) // T3CE name/fun/buttons region is not CE geometry
+  t3head[0x20 + 14] = 9 // impossible gear
+  check('impossible gear fails family proof', looksLikeCEProfile(t3head) === false)
+}
+
 // CE default parse unaffected.
-const blank = new Uint8Array(1070)
-check('CE default parse unaffected', parseProfile(blank).model === 'G7ProCE' && serializeProfile(parseProfile(blank)).length === 1070)
+{
+  const blank = new Uint8Array(1070)
+  check('CE default parse unaffected', parseProfile(blank).model === 'G7ProCE' && serializeProfile(parseProfile(blank)).length === 1070)
+}
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

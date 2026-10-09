@@ -39,6 +39,7 @@ check(
   s?.reportRates.map((r) => `${r.hz}(g${r.gear})`).join(' ')
 )
 check('G7ProS PIDs recorded', !!s && s.pids.includes(0x0908) && s.pids.includes(0x0922))
+check('CE variant PIDs cover white/black/nioh (0x913/0x1034/0x10c7)', !!ce && ce.pids.includes(0x0913) && ce.pids.includes(0x1034) && ce.pids.includes(0x10c7))
 check('G7SE locked (firmware-only in bundle)', !!se && se.support === 'detect-only' && se.profileLength === 0)
 check('Tarantula full support, 1935-byte profile proven on hardware', !!t3 && t3.support === 'full' && t3.profileLength === 1935)
 check(

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
-import { parseProfile, serializeProfile, fun, stick, LINEAR_CURVE } from '@shared/profile'
+import { parseProfile, serializeProfile, fun, stick, LINEAR_CURVE, looksLikeCEProfile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS } from '@shared/protocol'
 import { identifyModel, MODELS, type ControllerModel } from '@shared/models'
 import {
@@ -657,6 +657,13 @@ function StickCross({ lx, ly, rx, ry }: { lx: number; ly: number; rx: number; ry
 
 export default function App(): JSX.Element {
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [connPath, setConnPath] = useState<string | null>(null)
+  // Idle receivers (all-zero frames) are hidden; the open handle and
+  // unopenable handles always stay visible. If nothing proves live, show
+  // everything rather than an empty list.
+  const visibleCandidates = candidates.some((c) => c.live === true)
+    ? candidates.filter((c) => c.live === true || c.live === null || c.path === connPath)
+    : candidates
   const [connected, setConnected] = useState(false)
   const [info, setInfo] = useState<DeviceInfo | null>(null)
   const [pid, setPid] = useState<number | null>(null)
@@ -671,6 +678,9 @@ export default function App(): JSX.Element {
   const [rawRes, setRawRes] = useState('')
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
+  const [measuring, setMeasuring] = useState<{ left: number; suggestion: { dev: number; pct10: number } | null } | null>(null)
+  const wanderRef = useRef(0)
+  const modelLenRef = useRef(PROFILE_LENGTH)
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [showSafety, setShowSafety] = useState(() => {
     try {
@@ -690,8 +700,27 @@ export default function App(): JSX.Element {
   }
 
   useEffect(() => {
-    const off = api().on('input:sample', (s) => setLive(s as unknown as LiveSample))
-    return off
+    const offSample = api().on('input:sample', (s) => setLive(s as unknown as LiveSample))
+    const offStale = api().on('device:stale', () => {
+      setMsg('Pad restarted to apply the write — if the sidebar shows disconnected, hit Rescan USB + Connect again.')
+    })
+    const offReconnecting = api().on('device:reconnecting', () => {
+      setMsg('Pad rebooted to apply the change — reconnecting automatically…')
+    })
+    const offReconnected = api().on('device:reconnected', (incoming) => {
+      const info = incoming as unknown as DeviceInfo
+      setConnected(true)
+      setInfo(info)
+      setMsg('Reconnected — profile reloaded.')
+      void loadSlot(slot)
+    })
+    return () => {
+      offSample()
+      offStale()
+      offReconnecting()
+      offReconnected()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function refresh(): Promise<void> {
@@ -710,6 +739,7 @@ export default function App(): JSX.Element {
     setErr(null)
     try {
       const res = await api().connect(path)
+      setConnPath(path)
       setConnected(true)
       setInfo(res)
       const cand = candidates.find((c) => c.path === path)
@@ -722,22 +752,53 @@ export default function App(): JSX.Element {
         setBlob(null)
         setMsg(`${m.marketingName} detected — ${m.supportNote}`)
       } else {
-        // Default-deny: an unlisted PID is NEVER assumed to be a G7 Pro 8K.
-        // A wrong-geometry write would verify against itself while scrambling
-        // the real layout, so unknown pads get identification only.
-        setBlob(null)
-        const pidHex = cand ? `0x${cand.productId.toString(16)}` : 'unknown PID'
-        setMsg(
-          `Unknown model (${pidHex}, ${cand?.product ?? 'no product string'}) — locked as a safety default. ` +
-            'If this is a G7 Pro 8K color variant, report the PID to unlock it.'
-        )
+        // Unknown PID (new editions like Royal2): prove the family live.
+        // Handshake already answered; a 1070-byte read that parses as a
+        // CE-family profile unlocks it as an unverified variant. Anything
+        // else stays locked — this is what keeps a foreign layout safe.
+        setMsg('Unknown edition — proving compatibility (read-only check)…')
+        try {
+          const probe = await api().readProfile(res.currentProfile, PROFILE_LENGTH)
+          const bytes = b64ToBytes(probe.bytes)
+          if (looksLikeCEProfile(bytes)) {
+            const ce = MODELS.find((x) => x.id === 'G7ProCE')
+            const variant: ControllerModel = {
+              ...(ce ?? {
+                id: 'G7ProCE',
+                marketingName: 'GameSir G7 Pro 8K',
+                vendorId: 0x3537,
+                usagePage: 0xfff0,
+                usage: 0x40,
+                pids: [],
+                productHints: [],
+                reportRates: REPORT_RATE_OPTIONS.map((o) => ({ gear: o.gear, hz: o.hz, confirmed: o.confirmed })),
+                profileLength: 1070,
+                support: 'full',
+                supportNote: ''
+              }),
+              supportNote: `Unlisted edition (PID 0x${(cand?.productId ?? 0).toString(16)}) — family proven live by structural check. Report this PID to add it permanently.`
+            }
+            setModel(variant)
+            await loadSlot(slot, variant.profileLength)
+          } else {
+            setBlob(null)
+            setMsg(
+              `Unknown model (PID 0x${cand ? cand.productId.toString(16) : '?'}) — its profile does not read as G7-family, so it stays locked. Report the PID and model name to add it.`
+            )
+          }
+        } catch (e) {
+          setBlob(null)
+          setMsg(
+            `Unknown model — compatibility check failed (${(e as Error).message}). Locked as a safety default; report the PID to add it.`
+          )
+        }
       }
     } catch (e) {
       setErr((e as Error).message)
     }
   }
 
-  async function loadSlot(s: number, len = modelLen): Promise<void> {
+  async function loadSlot(s: number, len = modelLenRef.current): Promise<void> {
     setBusy(true)
     setMsg(null)
     setErr(null)
@@ -763,7 +824,12 @@ export default function App(): JSX.Element {
     try {
       const res = await api().writeProfile(slot, bytesToB64(blob), modelLen)
       if (res.verified) {
-        setMsg(`Slot ${slot} written + read-back verified. Pad may reboot (~1-2 s) if this slot is running — reconnect if needed.`)
+        const liveNow = info?.currentProfile
+        if (liveNow !== undefined && liveNow !== slot) {
+          setMsg(`Slot ${slot} written + verified — but the pad is running P${liveNow}, so nothing changed yet. Use Activate P${slot} in the top bar to apply it (the pad reboots ~2 s).`)
+        } else {
+          setMsg(`Slot ${slot} written + read-back verified. If the pad reboots (~1-2 s), it is applying the change — reconnect if needed.`)
+        }
         setDirty(false)
       } else if (res.rolledBack) {
         setErr('Write did not verify — previous bytes restored.')
@@ -804,10 +870,34 @@ export default function App(): JSX.Element {
   const resWire = fd ? fun.extend.stickResolution(fd) : 0
   const resInfo = describeRawResolution(fd ? fun.extend.stickResolution(fd) : 0)
 
+  // Center guard: while measuring, track the worst rest deviation of the
+  // current stick; the countdown then proposes a Start % that covers it.
+  useEffect(() => {
+    if (!measuring || measuring.suggestion || !live) return
+    const axes = which === 0 ? [live.lx, live.ly] : [live.rx, live.ry]
+    const dev = Math.max(...axes.map((v) => Math.abs(v - 128)))
+    if (dev > wanderRef.current) wanderRef.current = dev
+  }, [live, measuring, which])
+
+  useEffect(() => {
+    if (!measuring || measuring.suggestion) return
+    if (measuring.left <= 0) {
+      const dev = Math.round(wanderRef.current)
+      const pct10 = Math.min(200, Math.ceil((dev / 128) * 1000) + 5)
+      setMeasuring({ left: 0, suggestion: { dev, pct10 } })
+      return
+    }
+    const t = window.setTimeout(() => {
+      setMeasuring((m) => (m && !m.suggestion ? { ...m, left: m.left - 1 } : m))
+    }, 1000)
+    return () => window.clearTimeout(t)
+  }, [measuring])
+
   const designKey = `sticklab.design.${slot}.${which}`  // (Re)load the design canvas whenever the slot, stick, or profile bytes
   // change: prefer a saved design, else start from the pad's 5 points.
   useEffect(() => {
     if (!pkt) return
+    setMeasuring(null)
     try {
       const saved = window.localStorage.getItem(designKey)
       if (saved) {
@@ -837,6 +927,7 @@ export default function App(): JSX.Element {
   const locked = connected && (!model || model.support !== 'full')
   const modelId = model?.id ?? 'G7ProCE'
   const modelLen = model && model.profileLength > 0 ? model.profileLength : PROFILE_LENGTH
+  modelLenRef.current = modelLen
   const padCurve = pts
   const curvePending = quantized.length === padCurve.length && quantized.some((q, i) => q.x !== padCurve[i].x || q.y !== padCurve[i].y)
 
@@ -852,17 +943,49 @@ export default function App(): JSX.Element {
         </div>
         <div className="stack" style={{ gap: 10 }}>
           <button className="btn ghost sm" onClick={() => void refresh()}>Rescan USB</button>
+          <button
+            className="btn ghost sm"
+            title="Copy device + app details for support (nothing personal)"
+            onClick={() => {
+              const lines = [
+                `Stick Labs v${appVersion ?? '?'} ${new Date().toISOString()}`,
+                `connected=${connected} model=${model?.id ?? 'none'} pid=${pid !== null ? '0x' + pid.toString(16) : 'none'} fw=${info?.firmware ?? 'none'}`,
+                ...candidates.map(
+                  (c) => `cand pid=0x${c.productId.toString(16)} live=${c.live} preferred=${c.preferred} product=${c.product ?? '?'}`
+                )
+              ]
+              const text = lines.join('\n')
+              try {
+                void navigator.clipboard.writeText(text).then(
+                  () => setMsg('Diagnostics copied — paste it to RealKiyoshi.'),
+                  () => setMsg(text)
+                )
+              } catch {
+                setMsg(text)
+              }
+            }}
+          >
+            Copy diagnostics
+          </button>
           <div className="note">Wired or 2.4G receiver only — Bluetooth exposes no config interface, so the pad won't appear that way.</div>
-          {candidates.map((c) => (
-            <button key={c.path} className="btn sm" onClick={() => void connect(c.path)}>
-              {c.product || `Connect 0x${c.productId.toString(16)}`}{c.preferred ? ' ★' : ''}
-            </button>
-          ))}
+          <div className="note">Not just the 8K: G7 Pro 8K · G7 Pro · Tarantula 8K tuner. Unlisted editions auto-check on connect.</div>
+          {candidates.length > visibleCandidates.length && (
+            <div className="note">{candidates.length - visibleCandidates.length} idle receiver(s) hidden — only live pads shown.</div>
+          )}
+          {visibleCandidates.map((c) => {
+            const known = identifyModel(c.product, c.productId)
+            return (
+              <button key={c.path} className="btn sm" onClick={() => void connect(c.path)}>
+                {known ? known.marketingName : (c.product || `Unknown 0x${c.productId.toString(16)}`)}{c.preferred ? ' ★' : ''}
+              </button>
+            )
+          })}
           {connected && (
             <button
               className="btn ghost sm"
               onClick={() => {
                 void api().disconnect()
+                setConnPath(null)
                 setConnected(false)
                 setInfo(null)
                 setPid(null)
@@ -974,7 +1097,7 @@ export default function App(): JSX.Element {
           {msg && <div className="note">{msg}</div>}
           {dirty && <div className="note warn">Unsaved stick changes — write to apply. Writing the running slot reboots the pad (~1-2 s).</div>}
           {!connected && (
-            <div className="msg"><h3>Connect a G7 Pro 8K</h3><p>Rescan, then connect the vendor interface. Close GameSir Connect first — it holds the handle.</p></div>
+            <div className="msg"><h3>Connect a controller</h3><p>G7 Pro 8K · G7 Pro · Tarantula 8K (plus new 8K editions via auto-check). Rescan, then connect the vendor interface. Close GameSir Connect first — it holds the handle.</p></div>
           )}
           {connected && !profile && (
             !model || model.support !== 'full' ? (
@@ -1145,7 +1268,35 @@ export default function App(): JSX.Element {
                       <button className="btn sm ghost" title="Output floor 8% — small deflections bite sooner" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 80 }))}>Anti snap 8%</button>
                       <button className="btn sm ghost" title="Output floor 15% — maximum snap, watch for drift" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 150 }))}>Anti max 15%</button>
                       <button className="btn sm ghost" title="Neutral output window" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 0, endAnti: 1000 }))}>Anti off</button>
+                      <button
+                        className="btn sm ghost"
+                        title="Watch this stick untouched for 10 s, then recommend the Start % that swallows its wander"
+                        disabled={!live || measuring !== null}
+                        onClick={() => {
+                          wanderRef.current = 0
+                          setMeasuring({ left: 10, suggestion: null })
+                        }}
+                      >
+                        {measuring ? `Measuring… ${measuring.left}s — don't touch` : 'Center guard: measure wander'}
+                      </button>
                     </div>
+                    {measuring?.suggestion !== null && measuring?.suggestion !== undefined && (
+                      <div className="note warn" style={{ marginTop: 8 }}>
+                        Max wander {measuring.suggestion.dev} steps off centre.{' '}
+                        <button
+                          className="btn sm primary"
+                          style={{ marginLeft: 8 }}
+                          onClick={() => {
+                            const pct10 = measuring.suggestion!.pct10
+                            edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: pct10 }))
+                            setMeasuring(null)
+                          }}
+                        >
+                          Set Start {measuring.suggestion.pct10 / 10}%
+                        </button>{' '}
+                        <button className="btn sm ghost" onClick={() => setMeasuring(null)}>Dismiss</button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="card">

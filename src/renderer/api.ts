@@ -4,6 +4,7 @@ export interface Candidate {
   preferred: boolean
   product: string | undefined
   manufacturer: string | undefined
+  live: boolean | null
 }
 export interface DeviceInfo {
   firmware: string

@@ -666,9 +666,37 @@ export function motionIndex(name: string): number {
   return MOTION_SENSORS.indexOf(name as MotionName)
 }
 
+/**
+ * Family proof for unlisted PIDs (new color editions like Royal2): does a
+ * 1070-byte blob read as a G7ProCE-family profile? Checks every structural
+ * invariant a foreign layout (e.g. T3CE's first 1070 bytes) breaks: deadzone
+ * windows within 0..100 with end above begin, output window sane, map index
+ * in the output enum, gear and resolution wires in range, five curve points.
+ * Never throws — false on anything short or misshapen.
+ */
+export function looksLikeCEProfile(bytes: Uint8Array): boolean {
+  try {
+    if (bytes.length < PROFILE_LENGTH) return false
+    const profile = parseProfile(bytes, 'G7ProCE')
+    if (profile.sticks.length !== 2) return false
+    for (const s of profile.sticks) {
+      const d = stick.deadzone(s)
+      if (d.begin > 1000 || d.end > 1000 || d.beginAnti > 1000 || d.endAnti > 1000) return false
+      if (d.end <= d.begin) return false
+      if (stick.curve(s).length !== 5) return false
+      if (stick.mapIndex(s) > 4) return false
+    }
+    const gear = fun.extend.reportRateGear(profile.funData)
+    if (gear > 5) return false
+    if (fun.extend.stickResolution(profile.funData) > 4) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Light/RGB profile is a separate 169-byte blob. */
-export function parseLightProfile(bytes: Uint8Array): Packet {
-  if (bytes.length < LIGHT_PROFILE_LENGTH) {
+export function parseLightProfile(bytes: Uint8Array): Packet {  if (bytes.length < LIGHT_PROFILE_LENGTH) {
     throw new Error(`light profile too short: ${bytes.length}`)
   }
   return new Packet(bytes.slice(0, LIGHT_PROFILE_LENGTH))
