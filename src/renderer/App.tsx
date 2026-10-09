@@ -15,6 +15,7 @@ import {
   outerBufferFromBytes,
   isOuterUnlimited
 } from '@shared/sticklab'
+import { LANGUAGES, setLang, useLang, useT } from './i18n'
 
 function Slider(props: {
   label: string
@@ -214,39 +215,28 @@ function CurvePlot({ points, onChange, overlay }: { points: Array<{ x: number; y
  * the same LUT a dynamic curve would average out to. All verified byte-safe:
  * curve bytes only, +14..+23.
  */
-const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: number; y: number }> }> = {
-  linear: { label: 'Linear', hint: '1:1 raw', pts: [...LINEAR_CURVE] },
+// Labels and hints live in i18n `curves`, keyed the same way.
+const AIM_CURVES: Record<string, { pts: Array<{ x: number; y: number }> }> = {
+  linear: { pts: [...LINEAR_CURVE] },
   fpsAim: {
-    label: 'Kiyoshi Curve',
-    hint: 'calm centre, hot edge',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 38 }, { x: 128, y: 100 }, { x: 191, y: 185 }, { x: 255, y: 255 }]
   },
   micro: {
-    label: 'Micro-aim',
-    hint: 'extra-fine centre for tracking',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 28 }, { x: 128, y: 80 }, { x: 191, y: 170 }, { x: 255, y: 255 }]
   },
   flick: {
-    label: 'Flick/Snap',
-    hint: 'fast start for 180s',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 100 }, { x: 128, y: 160 }, { x: 191, y: 215 }, { x: 255, y: 255 }]
   },
   snappy: {
-    label: 'Snappy mid',
-    hint: 'COD-style boosted mid',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 78 }, { x: 128, y: 140 }, { x: 191, y: 200 }, { x: 255, y: 255 }]
   },
   steady: {
-    label: 'Steady track',
-    hint: 'Apex-style even pull',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 52 }, { x: 128, y: 112 }, { x: 191, y: 188 }, { x: 255, y: 255 }]
-  },  expo: {
-    label: 'Expo',
-    hint: 'late surge',
+  },
+  expo: {
     pts: [{ x: 0, y: 0 }, { x: 64, y: 16 }, { x: 128, y: 70 }, { x: 191, y: 158 }, { x: 255, y: 255 }]
   },
-  sacreds: {    label: 'Sacreds',
-    hint: 'Hyperstrike-style smooth fast start, 10 points',
+  sacreds: {
     pts: [
       { x: 0, y: 0 },
       { x: 26, y: 41 },
@@ -261,8 +251,6 @@ const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: 
     ]
   },
   machixo: {
-    label: 'Machixo',
-    hint: 'Slow-start desensitized, tops at 94%',
     pts: [
       { x: 0, y: 0 },
       { x: 20, y: 15 },
@@ -276,6 +264,7 @@ const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: 
 }
 
 function AnalyticsPanel({ context }: { context: string }): JSX.Element {
+  const t = useT()
   const [rate, setRate] = useState(0)
   const [frames, setFrames] = useState(0)
   const [history, setHistory] = useState<number[]>([])
@@ -369,33 +358,33 @@ function AnalyticsPanel({ context }: { context: string }): JSX.Element {
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
-      <h3>Analytics — polling, latency, stick range</h3>
+      <h3>{t.analyticsTitle}</h3>
       <div className="hint">{context}</div>
       <div className="two" style={{ alignItems: 'start', marginTop: 10 }}>
         <div className="stack" style={{ gap: 10 }}>
           <div className="row" style={{ gap: 8 }}>
-            <span className={`pill${rate >= 480 ? ' good' : rate > 0 ? ' warn' : ''}`}>{rate || '—'} Hz now</span>
-            <span className="pill">{avg || '—'} Hz avg</span>
-            <span className="pill">{frames.toLocaleString()} frames</span>
+            <span className={`pill${rate >= 480 ? ' good' : rate > 0 ? ' warn' : ''}`}>{t.hzNow(rate ? String(rate) : '—')}</span>
+            <span className="pill">{t.hzAvg(avg ? String(avg) : '—')}</span>
+            <span className="pill">{t.frames(frames.toLocaleString())}</span>
             <div style={{ flex: 1 }} />
-            <button className="btn sm ghost" onClick={() => setPaused((p) => !p)}>{paused ? 'Resume' : 'Pause'}</button>
+            <button className="btn sm ghost" onClick={() => setPaused((p) => !p)}>{paused ? t.resume : t.pause}</button>
           </div>
           <canvas ref={chartRef} className="plot" style={{ height: 120 }} />
-          <div className="note">Measured from the 0x12 input stream. Gear 5 streams ~500/s; gears 0–4 ~250/s — the 1K–8K labels are the USB poll claim, not the state rate.</div>
+          <div className="note">{t.pollNote}</div>
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn sm primary" disabled={pinging} onClick={() => void runPing()}>{pinging ? 'Measuring…' : 'Run 15 pings'}</button>
+            <button className="btn sm primary" disabled={pinging} onClick={() => void runPing()}>{pinging ? t.measuring : t.runPings}</button>
             {pingError && <span style={{ color: 'var(--bad)', fontSize: 12 }}>{pingError}</span>}
-            {ping && <span className="mono">median {ping.median.toFixed(1)} ms · mean {ping.mean.toFixed(1)} ms · min {ping.min.toFixed(1)} · max {ping.max.toFixed(1)}</span>}
+            {ping && <span className="mono">{t.pingResult(ping.median.toFixed(1), ping.mean.toFixed(1), ping.min.toFixed(1), ping.max.toFixed(1))}</span>}
           </div>
-          <div className="note">Ping times ReadCurrentProfile end-to-end (USB + firmware). Under ~3 ms is healthy; near 100 ms means contention.</div>
+          <div className="note">{t.pingNote}</div>
         </div>
         <div className="stack" style={{ gap: 10 }}>
           <div className="row spread">
-            <span className="label">Observed stick range (session)</span>
-            <button className="btn sm ghost" onClick={() => setExtents(null)}>Reset</button>
+            <span className="label">{t.observedRange}</span>
+            <button className="btn sm ghost" onClick={() => setExtents(null)}>{t.reset}</button>
           </div>
           <table className="tbl">
-            <thead><tr><th>Axis</th><th>Min</th><th>Max</th><th>Span</th></tr></thead>
+            <thead><tr><th>{t.colAxis}</th><th>{t.colMin}</th><th>{t.colMax}</th><th>{t.colSpan}</th></tr></thead>
             <tbody>
               {names.map((n, i) => (
                 <tr key={n}>
@@ -408,7 +397,7 @@ function AnalyticsPanel({ context }: { context: string }): JSX.Element {
             </tbody>
           </table>
           <div className="note">
-            {extents ? `${extents.n.toLocaleString()} samples. Full span ≈ 255; rest should sit near 128 — a stuck min/max far from centre means drift or a bad calibration.` : 'Move both sticks through their full range to map it.'}
+            {extents ? t.extentsNote(extents.n.toLocaleString()) : t.extentsEmpty}
           </div>
         </div>
       </div>
@@ -438,6 +427,7 @@ function download(filename: string, data: Uint8Array | string): void {
 }
 
 function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpLength, modelName }: { connected: boolean; activeSlot: number | null; locked: boolean; modelId: string; modelLen: number; dumpLength: number; modelName: string | null }): JSX.Element {
+  const t = useT()
   const [entries, setEntries] = useState<SlotEntry[]>([1, 2, 3, 4].map((index) => ({ index, name: null, bytes: null, loading: false, error: null })))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -478,7 +468,7 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
         failed++
       }
     }
-    setMessage(failed ? `${failed} slot(s) failed to read — Retry them individually` : 'Read all 4 stick profiles')
+    setMessage(failed ? t.slotsFailed(failed) : t.readAll4)
     setBusy(false)
   }
 
@@ -511,19 +501,19 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
         let bytes: Uint8Array
         if (file.name.endsWith('.json')) {
           const parsed = JSON.parse(await file.text()) as { bytes?: string }
-          if (!parsed.bytes) throw new Error('JSON file has no bytes field')
+          if (!parsed.bytes) throw new Error(t.jsonNoBytes)
           bytes = b64ToBytes(parsed.bytes)
         } else {
           bytes = new Uint8Array(await file.arrayBuffer())
         }
-        if (bytes.length !== modelLen) throw new Error(`expected ${modelLen} bytes, got ${bytes.length}`)
+        if (bytes.length !== modelLen) throw new Error(t.expectedBytes(modelLen, bytes.length))
         setBusy(true)
         const result = await api().writeProfile(entry.index, bytesToB64(bytes), modelLen)
-        if (!result.verified) throw new Error(result.rolledBack ? 'rejected — previous contents restored' : 'did not verify')
-        setMessage(`Imported ${file.name} → P${entry.index} · verified`)
+        if (!result.verified) throw new Error(result.rolledBack ? t.rejectedRestored : t.didNotVerify)
+        setMessage(t.imported(file.name, entry.index))
         await readSlot(entry.index)
       } catch (e) {
-        setMessage(`Import failed: ${(e as Error).message}`)
+        setMessage(t.importFailed((e as Error).message))
       } finally {
         setBusy(false)
       }
@@ -532,16 +522,16 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
   }
 
   async function copyTo(from: SlotEntry, toIndex: number): Promise<void> {
-    if (!window.confirm(`Overwrite P${toIndex} with P${from.index}?`)) return
+    if (!window.confirm(t.confirmOverwrite(toIndex, from.index))) return
     try {
       const bytes = from.bytes ?? (await readSlot(from.index))
       setBusy(true)
       const result = await api().writeProfile(toIndex, bytesToB64(bytes))
-      if (!result.verified) throw new Error(result.rolledBack ? 'rejected — previous contents restored' : 'did not verify')
-      setMessage(`Copied P${from.index} → P${toIndex} · verified`)
+      if (!result.verified) throw new Error(result.rolledBack ? t.rejectedRestored : t.didNotVerify)
+      setMessage(t.copied(from.index, toIndex))
       await readSlot(toIndex)
     } catch (e) {
-      setMessage(`Copy failed: ${(e as Error).message}`)
+      setMessage(t.copyFailed((e as Error).message))
     } finally {
       setBusy(false)
     }
@@ -556,9 +546,9 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
         dump[String(slot)] = { name: parseProfile(bytes, modelId).name, bytes: bytesToB64(bytes) }
       }
       download(`sticklab-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ version: 1, app: 'g7-stick-lab', device: 'G7ProCE', profiles: dump }, null, 2))
-      setMessage('Backup downloaded')
+      setMessage(t.backupDownloaded)
     } catch (e) {
-      setMessage(`Backup failed: ${(e as Error).message}`)
+      setMessage(t.backupFailed((e as Error).message))
     } finally {
       setBusy(false)
     }
@@ -577,20 +567,20 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
         const slots = Object.entries(parsed.profiles ?? {})
           .map(([slot, entry]) => ({ slot: Number(slot), entry }))
           .filter((x) => Number.isInteger(x.slot) && x.slot >= 1 && x.slot <= 4 && !!x.entry?.bytes)
-        if (slots.length === 0) throw new Error('that file holds no profiles')
-        if (!window.confirm(`Write ${slots.length} profile(s)? ${slots.map((x) => `P${x.slot} ${x.entry.name || ''}`).join(', ')}`)) return
+        if (slots.length === 0) throw new Error(t.noProfilesInFile)
+        if (!window.confirm(t.confirmRestore(slots.length, slots.map((x) => `P${x.slot} ${x.entry.name || ''}`).join(', ')))) return
         setBusy(true)
         for (const { slot, entry } of slots) {
           const bytes = b64ToBytes(entry.bytes as string)
-          if (bytes.length !== modelLen) throw new Error(`P${slot}: expected ${modelLen} bytes, got ${bytes.length}`)
+          if (bytes.length !== modelLen) throw new Error(t.slotExpectedBytes(slot, modelLen, bytes.length))
           const result = await api().writeProfile(slot, bytesToB64(bytes), modelLen)
-          if (!result.verified) throw new Error(result.rolledBack ? `P${slot} rejected — restored` : `P${slot} did not verify`)
+          if (!result.verified) throw new Error(result.rolledBack ? t.slotRejected(slot) : t.slotNotVerified(slot))
           written.push(`P${slot}`)
           await readSlot(slot)
         }
-        setMessage(`Restored ${written.join(', ')} · all verified`)
+        setMessage(t.restored(written.join(', ')))
       } catch (e) {
-        setMessage(`Restore failed: ${written.length ? `restored ${written.join(', ')} before failing — ` : ''}${(e as Error).message}`)
+        setMessage(t.restoreFailed(written.length ? written.join(', ') : null, (e as Error).message))
       } finally {
         setBusy(false)
       }
@@ -598,18 +588,18 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
     input.click()
   }
 
-  if (!connected) return <div className="note">Connect a controller to manage stick profiles.</div>
+  if (!connected) return <div className="note">{t.connectToManage}</div>
   if (locked) {
     return (
       <div className="card" style={{ marginTop: 16 }}>
-        <h3>Locked — {modelName ?? 'unknown model'}</h3>
-        <div className="hint">Profile backup is disabled for this model — its profile layout is unverified, so reads and writes stay off.</div>
+        <h3>{t.lockedTitle(modelName)}</h3>
+        <div className="hint">{t.lockedHint}</div>
         {dumpLength > 0 ? (
           <div className="row" style={{ gap: 8, marginTop: 10 }}>
             <button
               className="btn sm"
               disabled={busy}
-              title="Read-only: dumps all 4 slots for support analysis. Writes nothing."
+              title={t.dumpTitle}
               onClick={() => void (async () => {
                 setBusy(true)
                 setMessage(null)
@@ -630,20 +620,20 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
                     `sticklabs-dump-${modelId}-${new Date().toISOString().slice(0, 10)}.json`,
                     JSON.stringify({ version: 1, app: 'stick-labs-dump', model: modelId, length: dumpLength, profiles: dump }, null, 2)
                   )
-                  setMessage('Dump downloaded — send it to RealKiyoshi to unlock this model.')
+                  setMessage(t.dumpDownloaded)
                 } catch (e) {
-                  setMessage(`Dump failed: ${(e as Error).message}`)
+                  setMessage(t.dumpFailed((e as Error).message))
                 } finally {
                   setBusy(false)
                 }
               })()}
             >
-              {busy ? 'Reading…' : 'Export raw dump for support'}
+              {busy ? t.reading : t.exportDump}
             </button>
             {message && <span className="pill">{message}</span>}
           </div>
         ) : (
-          <div className="note" style={{ marginTop: 10 }}>No dump length is known for this model yet, so even read-only export stays off.</div>
+          <div className="note" style={{ marginTop: 10 }}>{t.noDumpLength}</div>
         )}
       </div>
     )
@@ -651,29 +641,29 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
-      <h3>Stick profiles — backup &amp; transfer</h3>
-      <div className="hint">Each slot is a 1070-byte blob; this card only reads/writes whole slots, so stick bytes are never half-merged.</div>
+      <h3>{t.profilesTitle}</h3>
+      <div className="hint">{t.profilesHint}</div>
       <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
-        <button className="btn sm" disabled={busy} onClick={() => void refreshAll()}>{busy ? 'Working…' : 'Read all from controller'}</button>
-        <button className="btn sm" disabled={busy} onClick={() => void backupAll()}>Backup all → JSON</button>
-        <button className="btn sm" disabled={busy} onClick={restoreAll}>Restore all → controller</button>
+        <button className="btn sm" disabled={busy} onClick={() => void refreshAll()}>{busy ? t.working : t.readAll}</button>
+        <button className="btn sm" disabled={busy} onClick={() => void backupAll()}>{t.backupAll}</button>
+        <button className="btn sm" disabled={busy} onClick={restoreAll}>{t.restoreAll}</button>
         {message && <span className="pill">{message}</span>}
       </div>
       <table className="tbl">
-        <thead><tr><th>Slot</th><th>Name</th><th>Active</th><th>Actions</th></tr></thead>
+        <thead><tr><th>{t.colSlot}</th><th>{t.colName}</th><th>{t.colActive}</th><th>{t.colActions}</th></tr></thead>
         <tbody>
           {entries.map((entry) => (
             <tr key={entry.index}>
               <td className="mono">P{entry.index}</td>
-              <td>{entry.loading ? 'reading…' : entry.error ? <span style={{ color: 'var(--bad)' }}>{entry.error} <button className="btn sm ghost" disabled={busy} onClick={() => void readSlot(entry.index)}>Retry</button></span> : (entry.name || <span style={{ color: 'var(--text-3)' }}>unnamed</span>)}</td>
-              <td>{entry.index === activeSlot ? <span className="pill good">current</span> : <span className="tag">—</span>}</td>
+              <td>{entry.loading ? t.readingSlot : entry.error ? <span style={{ color: 'var(--bad)' }}>{entry.error} <button className="btn sm ghost" disabled={busy} onClick={() => void readSlot(entry.index)}>{t.retry}</button></span> : (entry.name || <span style={{ color: 'var(--text-3)' }}>{t.unnamed}</span>)}</td>
+              <td>{entry.index === activeSlot ? <span className="pill good">{t.current}</span> : <span className="tag">—</span>}</td>
               <td>
                 <div className="row" style={{ gap: 6 }}>
-                  <button className="btn sm ghost" disabled={busy} onClick={() => void exportSlot(entry, 'bin')}>Export</button>
-                  <button className="btn sm ghost" disabled={busy} onClick={() => void exportSlot(entry, 'json')}>JSON</button>
-                  <button className="btn sm ghost" disabled={busy} onClick={() => handleImport(entry)}>Import…</button>
-                  <select className="input" style={{ width: 110 }} disabled={busy} value="" onChange={(e) => { if (e.target.value) void copyTo(entry, Number(e.target.value)) }}>
-                    <option value="">Copy to…</option>
+                  <button className="btn sm ghost" disabled={busy} onClick={() => void exportSlot(entry, 'bin')}>{t.exportBin}</button>
+                  <button className="btn sm ghost" disabled={busy} onClick={() => void exportSlot(entry, 'json')}>{t.exportJson}</button>
+                  <button className="btn sm ghost" disabled={busy} onClick={() => handleImport(entry)}>{t.importFile}</button>
+                  <select className="input" style={{ width: 130 }} disabled={busy} value="" onChange={(e) => { if (e.target.value) void copyTo(entry, Number(e.target.value)) }}>
+                    <option value="">{t.copyTo}</option>
                     {[1, 2, 3, 4].filter((s) => s !== entry.index).map((s) => <option key={s} value={s}>P{s}</option>)}
                   </select>
                 </div>
@@ -731,6 +721,12 @@ function StickCross({ lx, ly, rx, ry }: { lx: number; ly: number; rx: number; ry
 }
 
 export default function App(): JSX.Element {
+  const t = useT()
+  const lang = useLang()
+  // Device listeners are registered once; read strings through a ref so a
+  // language switch reaches them too.
+  const tRef = useRef(t)
+  tRef.current = t
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [connPath, setConnPath] = useState<string | null>(null)
   // Idle receivers (all-zero frames) are hidden; the open handle and
@@ -776,16 +772,16 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const offSample = api().on('input:sample', (s) => setLive(s as unknown as LiveSample))
     const offStale = api().on('device:stale', () => {
-      setMsg('Pad restarted to apply the write — if the sidebar shows disconnected, hit Rescan USB + Connect again.')
+      setMsg(tRef.current.padRestarted)
     })
     const offReconnecting = api().on('device:reconnecting', () => {
-      setMsg('Pad rebooted to apply the change — reconnecting automatically…')
+      setMsg(tRef.current.padRebooting)
     })
     const offReconnected = api().on('device:reconnected', (incoming) => {
       const info = incoming as unknown as DeviceInfo
       setConnected(true)
       setInfo(info)
-      setMsg('Reconnected — profile reloaded.')
+      setMsg(tRef.current.reconnected)
       void loadSlot(slot)
     })
     return () => {
@@ -809,6 +805,14 @@ export default function App(): JSX.Element {
     void api().version().then(setAppVersion).catch(() => undefined)
   }, [])
 
+  // Keep <html lang> and the main process (update dialog) in step with the UI.
+  useEffect(() => {
+    document.documentElement.lang = lang
+    void api().setLanguage(lang).catch(() => undefined)
+  }, [lang])
+
+  const supportNote = (m: ControllerModel): string => t.supportNotes[m.id] ?? m.supportNote
+
   async function connect(path: string): Promise<void> {
     setErr(null)
     try {
@@ -819,7 +823,7 @@ export default function App(): JSX.Element {
         // don't waste 10 s timing out a handshake that cannot answer.
         setModel(pre)
         setPid(cand?.productId ?? null)
-        setMsg(`${pre.marketingName} detected — ${pre.supportNote}`)
+        setMsg(t.detected(pre.marketingName, supportNote(pre)))
         return
       }
       const res = await api().connect(path)
@@ -833,13 +837,13 @@ export default function App(): JSX.Element {
         await loadSlot(slot, m.profileLength)
       } else if (m) {
         setBlob(null)
-        setMsg(`${m.marketingName} detected — ${m.supportNote}`)
+        setMsg(t.detected(m.marketingName, supportNote(m)))
       } else {
         // Unknown PID (new editions like Royal2): prove the family live.
         // Handshake already answered; a 1070-byte read that parses as a
         // CE-family profile unlocks it as an unverified variant. Anything
         // else stays locked — this is what keeps a foreign layout safe.
-        setMsg('Unknown edition — proving compatibility (read-only check)…')
+        setMsg(t.provingUnknown)
         try {
           // Try the running slot first, then every user slot: a single
           // family-shaped read anywhere unlocks the pad.
@@ -874,21 +878,17 @@ export default function App(): JSX.Element {
                 support: 'full',
                 supportNote: ''
               }),
-              supportNote: `Unlisted edition (PID 0x${(cand?.productId ?? 0).toString(16)}) — family proven live by structural check. Report this PID to add it permanently.`
+              supportNote: t.unlistedEdition((cand?.productId ?? 0).toString(16))
             }
             setModel(variant)
             await loadSlot(slot, variant.profileLength)
           } else {
             setBlob(null)
-            setMsg(
-              `Unknown model (PID 0x${cand ? cand.productId.toString(16) : '?'}) — its profile does not read as G7-family, so it stays locked. Report the PID and model name to add it.`
-            )
+            setMsg(t.unknownNotFamily(cand ? cand.productId.toString(16) : '?'))
           }
         } catch (e) {
           setBlob(null)
-          setMsg(
-            `Unknown model — compatibility check failed (${(e as Error).message}). Locked as a safety default; report the PID to add it.`
-          )
+          setMsg(t.unknownCheckFailed((e as Error).message))
         }
       }
     } catch (e) {
@@ -923,13 +923,13 @@ export default function App(): JSX.Element {
       if (res.verified) {
         const liveNow = info?.currentProfile
         if (liveNow !== undefined && liveNow !== slot) {
-          setMsg(`Slot ${slot} written + verified — but the pad is running P${liveNow}, so nothing changed yet. Use Activate P${slot} in the top bar to apply it (the pad reboots ~2 s).`)
+          setMsg(t.writtenNotLive(slot, liveNow))
         } else {
-          setMsg(`Slot ${slot} written + read-back verified. If the pad reboots (~1-2 s), it is applying the change — reconnect if needed.`)
+          setMsg(t.written(slot))
         }
         setDirty(false)
       } else if (res.rolledBack) {
-        setErr('Write did not verify — previous bytes restored.')
+        setErr(t.writeNotVerified)
         await loadSlot(slot)
       }
     } catch (e) {
@@ -1039,10 +1039,10 @@ export default function App(): JSX.Element {
           <h1>Stick <span>Labs</span></h1>
         </div>
         <div className="stack" style={{ gap: 10 }}>
-          <button className="btn ghost sm" onClick={() => void refresh()}>Rescan USB</button>
+          <button className="btn ghost sm" onClick={() => void refresh()}>{t.rescanUsb}</button>
           <button
             className="btn ghost sm"
-            title="Copy device + app details for support (nothing personal)"
+            title={t.copyDiagTitle}
             onClick={() => {
               const lines = [
                 `Stick Labs v${appVersion ?? '?'} ${new Date().toISOString()}`,
@@ -1054,7 +1054,7 @@ export default function App(): JSX.Element {
               const text = lines.join('\n')
               try {
                 void navigator.clipboard.writeText(text).then(
-                  () => setMsg('Diagnostics copied — paste it to RealKiyoshi.'),
+                  () => setMsg(t.diagCopied),
                   () => setMsg(text)
                 )
               } catch {
@@ -1062,13 +1062,13 @@ export default function App(): JSX.Element {
               }
             }}
           >
-            Copy diagnostics
+            {t.copyDiag}
           </button>
           {visibleCandidates.map((c) => {
             const known = identifyModel(c.product, c.productId)
             return (
               <button key={c.path} className="btn sm" onClick={() => void connect(c.path)}>
-                {known ? known.marketingName : (c.product || `Unknown 0x${c.productId.toString(16)}`)}{c.preferred ? ' ★' : ''}
+                {known ? known.marketingName : (c.product || t.unknownDevice(c.productId.toString(16)))}{c.preferred ? ' ★' : ''}
               </button>
             )
           })}
@@ -1084,29 +1084,45 @@ export default function App(): JSX.Element {
                 setModel(null)
               }}
             >
-              Disconnect
+              {t.disconnect}
             </button>
           )}
           <div className="note">
-            Match: VID 0x3537 + usagePage 0xFFF0/0x40. Never match PID — it varies by color/mode.
-            {info && <><br />FW {info.firmware} · live slot P{info.currentProfile}</>}
-            {model && <><br />{model.marketingName}{model.support !== 'full' ? ' · tuning locked' : ''}</>}
-            {pid !== null && <><br />Interface PID 0x{pid.toString(16)}</>}
+            {t.matchNote}
+            {info && <><br />{t.fwLine(info.firmware, info.currentProfile)}</>}
+            {model && <><br />{model.marketingName}{model.support !== 'full' ? t.tuningLockedSuffix : ''}</>}
+            {pid !== null && <><br />{t.interfacePid(pid.toString(16))}</>}
           </div>
           {pid === 0x0575 && (
             <div className="note bad">
-              That PID is the <strong>receiver</strong>, not the pad — reads time out on it. Disconnect and connect the ★ interface instead.
+              {t.receiverWarning}
             </div>
           )}
+        </div>
+        <div className="lang-section">
+          <span className="label">{t.language}</span>
+          <div className="row" style={{ gap: 6, marginTop: 6 }}>
+            {LANGUAGES.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                className={`btn sm${l.id === lang ? ' primary' : ' ghost'}`}
+                style={{ flex: 1 }}
+                onClick={() => setLang(l.id)}
+              >
+                {l.name}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="status-bar">
           <div className="status-row">
             <span className={`dot ${connected ? 'good' : 'bad'}`} />
-            {connected ? 'Connected' : 'Disconnected'}
+            {connected ? t.connected : t.disconnected}
             {appVersion && <span style={{ color: 'var(--text-3)' }}>v{appVersion}</span>}
           </div>
           <div className="status-row" style={{ marginTop: 8 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>Developed by RealKiyoshi</span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.developedBy}</span>
           </div>
           <button
             type="button"
@@ -1122,7 +1138,7 @@ export default function App(): JSX.Element {
         <header className="topbar">
           <div className="row" style={{ gap: 12 }}>
             <h2>Stick Labs</h2>
-            <span className="sub">bit depth + raw unlock · curves · live sticks</span>
+            <span className="sub">{t.subtitle}</span>
           </div>
           <div className="row" style={{ gap: 8 }}>
             {[1, 2, 3, 4].map((s) => (
@@ -1136,11 +1152,11 @@ export default function App(): JSX.Element {
               </button>
             ))}
             <button className="btn sm primary" disabled={!connected || !dirty || busy || locked} onClick={() => void write()}>
-              {busy ? 'Working…' : 'Write to controller'}
+              {busy ? t.working : t.writeToController}
             </button>
             <button
               className="btn sm ghost"
-              title="Make this slot the active profile on the pad"
+              title={t.activateTitle}
               disabled={!connected || busy || locked || info?.currentProfile === slot}
               onClick={() => {
                 setErr(null)
@@ -1148,25 +1164,23 @@ export default function App(): JSX.Element {
                   .switchProfile(slot)
                   .then(() => {
                     setInfo((prev) => (prev ? { ...prev, currentProfile: slot } : prev))
-                    setMsg(`Slot ${slot} is now active.`)
+                    setMsg(t.slotNowActive(slot))
                   })
                   .catch((e: Error) => setErr(e.message))
               }}
             >
-              {info?.currentProfile === slot ? `P${slot} active` : `Activate P${slot}`}
+              {info?.currentProfile === slot ? t.slotActive(slot) : t.activateSlot(slot)}
             </button>
           </div>
         </header>
         <div className="content">
           {showSafety && (
             <div className="card" style={{ marginBottom: 16, borderColor: 'var(--warn)' }}>
-              <h3>First — read this (30 seconds)</h3>
+              <h3>{t.safetyTitle}</h3>
               <div className="stack" style={{ gap: 6, fontSize: 13 }}>
-                <span>1. <strong>Back up first</strong> — Stick profiles card → Backup all → JSON. You can always restore.</span>
-                <span>2. <strong>Close GameSir Connect</strong> — it holds the controller and blocks this app.</span>
-                <span>3. <strong>Wired or 2.4G only</strong> — Bluetooth pads don't appear here, ever.</span>
-                <span>4. <strong>Writing the active profile reboots the pad</strong> for ~2 seconds. Normal — it reconnects by itself.</span>
-                <span>5. <strong>Tournaments</strong> — check your event's rules before competing on a tuned profile.</span>
+                {t.safetyItems.map((item, i) => (
+                  <span key={i}>{i + 1}. {item}</span>
+                ))}
               </div>
               <div className="row" style={{ marginTop: 10 }}>
                 <button
@@ -1180,51 +1194,51 @@ export default function App(): JSX.Element {
                     setShowSafety(false)
                   }}
                 >
-                  Got it
+                  {t.gotIt}
                 </button>
               </div>
             </div>
           )}
           {err && <div className="note bad">{err}</div>}
           {msg && <div className="note">{msg}</div>}
-          {dirty && <div className="note warn">Unsaved stick changes — write to apply. Writing the running slot reboots the pad (~1-2 s).</div>}
+          {dirty && <div className="note warn">{t.unsaved}</div>}
           {!connected && (
-            <div className="msg"><h3>Connect a controller</h3><p>G7 Pro 8K · G7 Pro · Tarantula 8K (plus new 8K editions via auto-check). Rescan, then connect the vendor interface. Close GameSir Connect first — it holds the handle.</p></div>
+            <div className="msg"><h3>{t.connectTitle}</h3><p>{t.connectBody}</p></div>
           )}
           {connected && !profile && (
             !model || model.support !== 'full' ? (
               <div className="msg">
-                <h3>{model ? `${model.marketingName} — tuning locked` : 'Unknown controller — tuning locked'}</h3>
-                <p>{model ? model.supportNote : 'This USB ID is not in the verified model table, so profile access stays off as a safety default.'}</p>
-                <p>Live input below still works. Profile reads/writes stay disabled until the layout is verified on hardware.</p>
+                <h3>{model ? t.modelLocked(model.marketingName) : t.unknownLockedTitle}</h3>
+                <p>{model ? supportNote(model) : t.unknownLockedBody}</p>
+                <p>{t.liveStillWorks}</p>
               </div>
             ) : (
-              <div className="msg"><h3>Loading profile…</h3></div>
+              <div className="msg"><h3>{t.loadingProfile}</h3></div>
             )
           )}
           {connected && profile && pkt && dz && fd && (
             <>
               <div className="row" style={{ gap: 8, marginBottom: 12 }}>
-                {(['Left', 'Right'] as const).map((n, i) => (
-                  <button key={n} className={`btn${i === which ? ' primary' : ' ghost'}`} onClick={() => setWhich(i)}>
-                    {n} stick
+                {t.stickNames.map((n, i) => (
+                  <button key={i} className={`btn${i === which ? ' primary' : ' ghost'}`} onClick={() => setWhich(i)}>
+                    {n}
                   </button>
                 ))}
                 <div style={{ flex: 1 }} />
-                <span className="pill">{resBits}-bit · {bitsToLevels(resBits).toLocaleString()} levels</span>
+                <span className="pill">{t.bitsPill(resBits, bitsToLevels(resBits).toLocaleString())}</span>
               </div>
 
               <div className="two" style={{ alignItems: 'start' }}>
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="card">
-                    <h3>Polling rate — {rates.map((o) => (o.hz >= 1000 ? `${o.hz / 1000}K` : `${o.hz}`)).join(' / ')}</h3>
-                    <div className="hint">Report-rate gear (Fun_Data +14){model ? ` · ${model.marketingName} offers ${rates.length} gears` : ''}. Hz labels are the vendor's claim; measured input stays ~250–500/s.</div>
+                    <h3>{t.pollingTitle(rates.map((o) => (o.hz >= 1000 ? `${o.hz / 1000}K` : `${o.hz}`)).join(' / '))}</h3>
+                    <div className="hint">{t.pollingHint(model ? model.marketingName : null, rates.length)}</div>
                     <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
                       {rates.filter((o) => o.hz >= 1000).map((o) => (
                         <button
                           key={o.gear}
                           className={`btn sm${fun.extend.reportRateGear(fd) === o.gear ? ' primary' : ' ghost'}`}
-                          title={o.confirmed ? `gear ${o.gear}` : `gear ${o.gear} (inferred — no vendor label)`}
+                          title={o.confirmed ? t.gearTitle(o.gear) : t.gearInferredTitle(o.gear)}
                           onClick={() => edit(() => fun.extend.setReportRateGear(fd, o.gear))}
                         >
                           {o.hz >= 1000 ? `${o.hz / 1000}K` : `${o.hz} Hz`}{o.confirmed ? '' : '*'}
@@ -1232,15 +1246,15 @@ export default function App(): JSX.Element {
                       ))}
                     </div>
                     <div className="row spread">
-                      <span className="label">Gear: {fun.extend.reportRateGear(fd)}</span>
-                      <span className="mono">*2K inferred — completes the 250/500/1000/…/4000/8000 ladder</span>
+                      <span className="label">{t.gearLabel(fun.extend.reportRateGear(fd))}</span>
+                      <span className="mono">{t.twoKInferred}</span>
                     </div>
                     <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
                       {rates.filter((o) => o.hz < 1000).map((o) => (
                         <button
                           key={o.gear}
                           className={`btn sm${fun.extend.reportRateGear(fd) === o.gear ? ' primary' : ' ghost'}`}
-                          title={`gear ${o.gear}`}
+                          title={t.gearTitle(o.gear)}
                           onClick={() => edit(() => fun.extend.setReportRateGear(fd, o.gear))}
                         >
                           {o.hz} Hz
@@ -1250,8 +1264,8 @@ export default function App(): JSX.Element {
                   </div>
 
                   <div className="card">
-                    <h3>Bit depth — 8–24</h3>
-                    <div className="hint">Hardware tops at 12-bit — past that the pad clamps or ignores, prove it on the crosshair.</div>
+                    <h3>{t.bitDepthTitle}</h3>
+                    <div className="hint">{t.bitDepthHint}</div>
                     <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
                       {STICK_RESOLUTION_OPTIONS.map((o) => (
                         <button
@@ -1266,7 +1280,7 @@ export default function App(): JSX.Element {
                         <button
                           key={bits}
                           className={`btn sm ghost${resWire === bitsToWireRaw(bits) ? ' primary' : ''}`}
-                          title="Beyond silicon — writes the implied raw wire, expect clamp/ignore"
+                          title={t.beyondSiliconTitle}
                           onClick={() => edit(() => fun.extend.setStickResolution(fd, bitsToWireRaw(bits)))}
                         >
                           {bits}-bit*
@@ -1274,32 +1288,31 @@ export default function App(): JSX.Element {
                       ))}
                     </div>
                     <div className="note" style={{ marginTop: 8 }}>
-                      *The ADC tops at 12-bit and the USB stick report is 8-bit per axis — games see 256 steps no matter what.
+                      {t.adcNote}
                     </div>
                     {!resInfo.standard && (
                       <div className="note bad" style={{ marginTop: 8 }}>
-                        Non-standard wire {resInfo.wire} → effective {resInfo.bits}-bit. The firmware only documents 0–4 (12–8 bit);
-                        anything else may quantise oddly or be ignored. Verify on the live sticks before keeping it.
+                        {t.nonStandardWire(resInfo.wire, resInfo.bits)}
                       </div>
                     )}
                   </div>
 
                   <div className="card">
-                    <h3>Dead zone + anti-deadzone — 0.1% steps</h3>
-                    <div className="hint">Stored ×10 (50 = 5%). <strong>Start/End</strong> bound the input: below Start = no output, past End = already full. <strong>Anti-deadzone</strong> is the output floor/ceiling: raising Anti-start lifts the minimum output so small deflections bite sooner — the snap setting for FPS.</div>
+                    <h3>{t.deadzoneTitle}</h3>
+                    <div className="hint">{t.deadzoneHint}</div>
                     <div className="stack" style={{ gap: 12, marginTop: 8 }}>
-                      <Slider label="Start (input below = 0)" value={dz.begin / 10} min={0} max={20} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label="End (input above = full)" value={dz.end / 10} min={10} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label="Anti-deadzone start (output floor — snap)" value={dz.beginAnti / 10} min={0} max={50} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label="Anti-deadzone end (output ceiling)" value={dz.endAnti / 10} min={50} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), endAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                      <Slider label={t.sliderStart} value={dz.begin / 10} min={0} max={20} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                      <Slider label={t.sliderEnd} value={dz.end / 10} min={10} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                      <Slider label={t.sliderAntiStart} value={dz.beginAnti / 10} min={0} max={50} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                      <Slider label={t.sliderAntiEnd} value={dz.endAnti / 10} min={50} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), endAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
                     </div>
                     <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
                       {(
                         [
-                          { label: 'Start', key: 'begin', value: dz.begin / 10 },
-                          { label: 'End', key: 'end', value: dz.end / 10 },
-                          { label: 'Anti-start', key: 'beginAnti', value: dz.beginAnti / 10 },
-                          { label: 'Anti-end', key: 'endAnti', value: dz.endAnti / 10 }
+                          { label: t.fieldStart, key: 'begin', value: dz.begin / 10 },
+                          { label: t.fieldEnd, key: 'end', value: dz.end / 10 },
+                          { label: t.fieldAntiStart, key: 'beginAnti', value: dz.beginAnti / 10 },
+                          { label: t.fieldAntiEnd, key: 'endAnti', value: dz.endAnti / 10 }
                         ] as const
                       ).map((f) => (
                         <label key={f.key} className="row" style={{ gap: 6, fontSize: 12 }}>
@@ -1323,28 +1336,28 @@ export default function App(): JSX.Element {
                       ))}
                     </div>
                     <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-                      <button className="btn sm" onClick={() => edit(() => stick.applyPhysics(pkt))}>Physics: 0% + linear</button>
-                      <button className="btn sm ghost" onClick={() => edit(() => stick.setDeadzone(pkt, { begin: 50, end: 1000, beginAnti: 0, endAnti: 1000 }))}>Factory 5%</button>
-                      <button className="btn sm ghost" title="Full output at 80% deflection — pairs with FPS Aim" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: 800 }))}>Aim End 80%</button>
-                      <button className="btn sm ghost" title="Full output at 65% — pairs with Flick/Snap" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: 650 }))}>Flick End 65%</button>
-                      <button className="btn sm ghost" title="Output floor 8% — small deflections bite sooner" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 80 }))}>Anti snap 8%</button>
-                      <button className="btn sm ghost" title="Output floor 15% — maximum snap, watch for drift" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 150 }))}>Anti max 15%</button>
-                      <button className="btn sm ghost" title="Neutral output window" onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 0, endAnti: 1000 }))}>Anti off</button>
+                      <button className="btn sm" onClick={() => edit(() => stick.applyPhysics(pkt))}>{t.physics}</button>
+                      <button className="btn sm ghost" onClick={() => edit(() => stick.setDeadzone(pkt, { begin: 50, end: 1000, beginAnti: 0, endAnti: 1000 }))}>{t.factory5}</button>
+                      <button className="btn sm ghost" title={t.aimEndTitle} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: 800 }))}>{t.aimEnd}</button>
+                      <button className="btn sm ghost" title={t.flickEndTitle} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: 650 }))}>{t.flickEnd}</button>
+                      <button className="btn sm ghost" title={t.antiSnapTitle} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 80 }))}>{t.antiSnap}</button>
+                      <button className="btn sm ghost" title={t.antiMaxTitle} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 150 }))}>{t.antiMax}</button>
+                      <button className="btn sm ghost" title={t.antiOffTitle} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 0, endAnti: 1000 }))}>{t.antiOff}</button>
                       <button
                         className="btn sm ghost"
-                        title="Watch this stick untouched for 10 s, then recommend the Start % that swallows its wander"
+                        title={t.centerGuardTitle}
                         disabled={!live || measuring !== null}
                         onClick={() => {
                           wanderRef.current = 0
                           setMeasuring({ left: 10, suggestion: null })
                         }}
                       >
-                        {measuring ? `Measuring… ${measuring.left}s — don't touch` : 'Center guard: measure wander'}
+                        {measuring ? t.measuringWander(measuring.left) : t.centerGuard}
                       </button>
                     </div>
                     {measuring?.suggestion !== null && measuring?.suggestion !== undefined && (
                       <div className="note warn" style={{ marginTop: 8 }}>
-                        Max wander {measuring.suggestion.dev} steps off centre.{' '}
+                        {t.maxWander(measuring.suggestion.dev)}{' '}
                         <button
                           className="btn sm primary"
                           style={{ marginLeft: 8 }}
@@ -1354,21 +1367,21 @@ export default function App(): JSX.Element {
                             setMeasuring(null)
                           }}
                         >
-                          Set Start {measuring.suggestion.pct10 / 10}%
+                          {t.setStart(measuring.suggestion.pct10 / 10)}
                         </button>{' '}
-                        <button className="btn sm ghost" onClick={() => setMeasuring(null)}>Dismiss</button>
+                        <button className="btn sm ghost" onClick={() => setMeasuring(null)}>{t.dismiss}</button>
                       </div>
                     )}
                   </div>
 
                   <div className="card">
-                    <h3>Outer Threshold — {outerUnlimited ? '∞ no limit' : 'custom'}</h3>
-                    <div className="hint">The boundary of max stick input. This app offers one setting: <strong>no limit</strong>.</div>
+                    <h3>{t.outerTitle(outerUnlimited)}</h3>
+                    <div className="hint">{t.outerHint}</div>
                     <div className="row spread" style={{ margin: '10px 0' }}>
                       <div>
-                        <div style={{ fontSize: 13.5 }}>∞ No limit (neutral 0)</div>
+                        <div style={{ fontSize: 13.5 }}>{t.outerNoLimit}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                          {outerUnlimited ? 'Active — full physical range' : 'Off — mild +10 boundary parked'}
+                          {outerUnlimited ? t.outerActive : t.outerOff}
                         </div>
                       </div>
                       <button
@@ -1381,25 +1394,19 @@ export default function App(): JSX.Element {
                           }
                         }}
                       >
-                        {outerUnlimited ? '∞ On' : 'Set ∞'}
+                        {outerUnlimited ? t.outerOn : t.outerSet}
                       </button>
                     </div>
                     <div className="note">
-                      <strong>What this does.</strong> The outer threshold is the deflection where the stick hits maximum output.
-                      A positive buffer pulls that boundary inward, so max arrives earlier (hotter rim); a negative buffer
-                      soft-caps output below max instead (tamer rim — the zone where extra yaw/pitch-style effects bite).
-                      Neutral <strong>0 / ∞</strong> removes the boundary entirely: End 100%, output ceiling 100%, the pad's
-                      full physical range with nothing clipped or boosted at the rim.
+                      {t.outerWhat}
                     </div>
                     <div className="note" style={{ marginTop: 8 }}>
-                      <strong>Same bytes, other names.</strong> Steam's Outer Threshold and the deadzone End / output-ceiling
-                      sliders all write the same two firmware fields (input-saturation End, output ceiling). They are just
-                      different labels for this boundary — setting ∞ here is identical to End 100% + ceiling 100% over there.
+                      {t.outerSame}
                     </div>
                     {!outerUnlimited && (
                       <div className="note warn" style={{ marginTop: 8 }}>
-                        This stick currently carries a custom boundary: <span className="mono">{outerBuffer >= 0 ? `max at ${(100 - outerBuffer).toFixed(0)}% deflection` : `output tops at ${(100 + outerBuffer).toFixed(0)}%`}</span>.
-                        Tap <strong>Set ∞</strong> to clear it back to the full range.
+                        {t.outerCustom} <span className="mono">{outerBuffer >= 0 ? t.outerMaxAt((100 - outerBuffer).toFixed(0)) : t.outerTopsAt((100 + outerBuffer).toFixed(0))}</span>.{' '}
+                        {t.outerTapSet}
                       </div>
                     )}
                   </div>
@@ -1407,8 +1414,8 @@ export default function App(): JSX.Element {
 
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="card">
-                    <h3>Live sticks</h3>
-                    <div className="hint">0x12 vendor report, 0–255, centre 128. Move the sticks.</div>
+                    <h3>{t.liveTitle}</h3>
+                    <div className="hint">{t.liveHint}</div>
                     <StickCross lx={live?.lx ?? 128} ly={live?.ly ?? 128} rx={live?.rx ?? 128} ry={live?.ry ?? 128} />
                     <div className="row spread">
                       <span className="mono">L {live?.lx ?? '—'},{live?.ly ?? '—'}</span>
@@ -1417,24 +1424,24 @@ export default function App(): JSX.Element {
                   </div>
 
                   <div className="card">
-                    <h3>Custom curve designer — {design.length} points</h3>
-                    <div className="hint">The pad stores exactly <strong>5 points</strong>, so this is a free-point canvas (2–10): <span style={{ color: '#7db8ff' }}>● blue = your design, drag it</span>, <span style={{ color: 'var(--warn)' }}>▢ orange dashed = the 5 bytes that will be written</span>. Dual-zone presets mimic a dynamic response — the pad has no speed sensing, so this is the static LUT a dynamic curve averages to.</div>
+                    <h3>{t.designerTitle(design.length)}</h3>
+                    <div className="hint">{t.designerHint}</div>
                     <CurvePlot points={design.length >= 2 ? design : padCurve} onChange={(next) => setDesign(next)} overlay={quantized} />
                     <div className="row" style={{ gap: 8, margin: '8px 0' }}>
-                      <span className={curvePending ? 'pill warn' : 'pill good'}>{curvePending ? 'design ≠ pad — send it' : 'pad matches design'}</span>
+                      <span className={curvePending ? 'pill warn' : 'pill good'}>{curvePending ? t.designPending : t.designMatches}</span>
                       <div style={{ flex: 1 }} />
-                      <button className="btn sm primary" disabled={!curvePending} onClick={() => edit(() => { if (pkt) stick.setCurve(pkt, quantized.map((p) => ({ ...p }))) })}>Send 5 to pad</button>
-                      <button className="btn sm ghost" onClick={reloadDesignFromPad}>Reload from pad</button>
+                      <button className="btn sm primary" disabled={!curvePending} onClick={() => edit(() => { if (pkt) stick.setCurve(pkt, quantized.map((p) => ({ ...p }))) })}>{t.send5}</button>
+                      <button className="btn sm ghost" onClick={reloadDesignFromPad}>{t.reloadFromPad}</button>
                     </div>
                     <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
                       {Object.entries(AIM_CURVES).map(([key, c]) => (
                         <button
                           key={key}
                           className="btn sm ghost"
-                          title={c.hint}
+                          title={t.curves[key]?.hint}
                           onClick={() => setDesign(c.pts.map((p) => ({ ...p })))}
                         >
-                          {c.label}
+                          {t.curves[key]?.label ?? key}
                         </button>
                       ))}
                     </div>
@@ -1444,18 +1451,18 @@ export default function App(): JSX.Element {
                         disabled={design.length >= DESIGN_MAX_POINTS}
                         onClick={() => setDesign((d) => addDesignPoint(d.length >= 2 ? d : padCurve))}
                       >
-                        + Add point ({design.length}/{DESIGN_MAX_POINTS})
+                        {t.addPoint(design.length, DESIGN_MAX_POINTS)}
                       </button>
                       <button
                         className="btn sm ghost"
-                        title="Copy this stick's pad curve to the other stick"
+                        title={t.copyCurveTitle}
                         onClick={() => {
                           if (!profile || !pkt) return
                           const other = profile.sticks[which === 0 ? 1 : 0]
                           edit(() => stick.setCurve(other, stick.curve(pkt).map((p) => ({ ...p }))))
                         }}
                       >
-                        Copy pad curve → other stick
+                        {t.copyCurve}
                       </button>
                     </div>
                     <table className="tbl" style={{ marginTop: 8 }}>
@@ -1467,29 +1474,29 @@ export default function App(): JSX.Element {
                             <td><input className="input" type="number" min={0} max={255} value={p.x} onChange={(e) => { const next = design.map((q) => ({ ...q })); next[i].x = Math.max(0, Math.min(255, Number(e.target.value))); setDesign(next) }} /></td>
                             <td><input className="input" type="number" min={0} max={255} value={p.y} onChange={(e) => { const next = design.map((q) => ({ ...q })); next[i].y = Math.max(0, Math.min(255, Number(e.target.value))); setDesign(next) }} /></td>
                             <td>
-                              <button className="btn sm ghost" disabled={design.length <= DESIGN_MIN_POINTS} title="Remove point" onClick={() => setDesign((d) => d.filter((_, j) => j !== i))}>−</button>
+                              <button className="btn sm ghost" disabled={design.length <= DESIGN_MIN_POINTS} title={t.removePoint} onClick={() => setDesign((d) => d.filter((_, j) => j !== i))}>−</button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     <div className="note" style={{ marginTop: 8 }}>
-                      Hardware bytes (quantized preview): <span className="mono">{quantized.map((q) => `${q.x}/${q.y}`).join(' · ')}</span>
+                      {t.hwBytes} <span className="mono">{quantized.map((q) => `${q.x}/${q.y}`).join(' · ')}</span>
                     </div>
                   </div>
 
                   <div className="card">
-                    <h3>Controller Rate</h3>
-                    <div className="hint">How fast this stick answers in Mouse mode — higher moves the cursor more per deflection. It does <strong>not</strong> change how often the pad sends inputs; that is the Polling card.</div>
+                    <h3>{t.rateTitle}</h3>
+                    <div className="hint">{t.rateHint}</div>
                     <div className="stack" style={{ gap: 12 }}>
                       <div className="row spread">
                         <div>
-                          <div style={{ fontSize: 13.5 }}>Rate — constant per pick</div>
+                          <div style={{ fontSize: 13.5 }}>{t.rateConstant}</div>
                           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                            Only applies while Output is Mouse · firmware byte caps at 255
+                            {t.rateOnlyMouse}
                           </div>
                         </div>
-                        <span className="mono">stored: {stick.mouseDpi(pkt)}</span>
+                        <span className="mono">{t.rateStored(stick.mouseDpi(pkt))}</span>
                       </div>
                       <div className="row wrap" style={{ gap: 8 }}>
                         {[100, 150, 200, 250, 300].map((rate) => {
@@ -1499,7 +1506,7 @@ export default function App(): JSX.Element {
                             <button
                               key={rate}
                               className={`btn sm${active ? ' primary' : ' ghost'}`}
-                              title={rate > 255 ? `Firmware byte caps at 255 — stores ${wire}` : `Stores ${wire}`}
+                              title={rate > 255 ? t.rateCapsTitle(wire) : t.rateStoresTitle(wire)}
                               onClick={() => edit(() => stick.setMouseDpi(pkt, wire))}
                             >
                               {rate}{rate > 255 ? '*' : ''}
@@ -1509,49 +1516,44 @@ export default function App(): JSX.Element {
                         {stick.mapIndex(pkt) === 4 && (
                           <button
                             className="btn sm ghost"
-                            title="Restore this stick to normal stick output"
+                            title={t.restoreStickTitle}
                             onClick={() => edit(() => { stick.setMapIndex(pkt, which === 0 ? 1 : 2); stick.setMapped(pkt, true) })}
                           >
-                            ← Back to {which === 0 ? 'Left' : 'Right'} stick
+                            {t.backToStick(which === 0)}
                           </button>
                         )}
                       </div>
-                      <div className="note">Picks always write (100 / 150 / 200 / 250 / 255-max shown as 300*), but the pad only honors the byte while Output is Mouse. *300 exceeds the byte — the pad stores 255.</div>
+                      <div className="note">{t.rateNote}</div>
                     </div>
                   </div>
 
                   <div className="card">
-                    <h3>Shape</h3>
-                    <div className="hint">Three shapes for this stick — processing on for the first two, fully bypassed for raw.</div>
+                    <h3>{t.shapeTitle}</h3>
+                    <div className="hint">{t.shapeHint}</div>
                     <div className="stack" style={{ gap: 8 }}>
-                      {(
-                        [
-                          { name: 'Round diagonals', hint: 'Uniform reach all directions (FPS aim)' },
-                          { name: 'Square gate', hint: 'Diagonals reach full deflection (hotter corners)' },
-                          { name: 'Pure raw 1:1', hint: 'No processing — untouched magnetic signal' }
-                        ] as const
-                      ).map((s) => {
+                      {(['round', 'square', 'raw'] as const).map((id) => {
+                        const s = t.shapes[id]
                         const isRaw = !stick.enabled(pkt)
                         const isSquare = stick.enabled(pkt) && stick.squareGate(pkt)
                         const isRound = stick.enabled(pkt) && !stick.squareGate(pkt)
-                        const active = (s.name === 'Round diagonals' && isRound) || (s.name === 'Square gate' && isSquare) || (s.name === 'Pure raw 1:1' && isRaw)
+                        const active = (id === 'round' && isRound) || (id === 'square' && isSquare) || (id === 'raw' && isRaw)
                         return (
                           <button
-                            key={s.name}
+                            key={id}
                             className={`btn sm${active ? ' primary' : ' ghost'}`}
                             title={s.hint}
                             onClick={() => {
                               edit(() => {
-                                if (s.name === 'Pure raw 1:1') {
+                                if (id === 'raw') {
                                   stick.setEnabled(pkt, false)
                                 } else {
                                   stick.setEnabled(pkt, true)
-                                  stick.setSquareGate(pkt, s.name === 'Square gate')
+                                  stick.setSquareGate(pkt, id === 'square')
                                 }
                               })
                             }}
                           >
-                            {s.name}
+                            {s.label}
                           </button>
                         )
                       })}
@@ -1559,14 +1561,14 @@ export default function App(): JSX.Element {
                   </div>
 
                   <div className="card" style={{ borderColor: 'var(--bad)' }}>
-                    <h3>Reset everything</h3>
-                    <div className="hint">Returns every byte this app can write to stock neutral — both sticks (deadzone, curve, flips, gate, axis, mouse rate, outputs), outer unlimited, 12-bit, 8K polling, RC off. Names, triggers, buttons and macros are untouched. Then Write to apply.</div>
+                    <h3>{t.resetTitle}</h3>
+                    <div className="hint">{t.resetHint}</div>
                     <button
                       className="btn danger"
                       style={{ width: '100%', padding: '14px', fontSize: 15, fontWeight: 700, letterSpacing: '0.08em', marginTop: 10 }}
                       onClick={() => {
                         if (!profile || !fd) return
-                        if (!window.confirm('Reset EVERYTHING this app controls to stock neutral?\n\nBoth sticks, outer, detail, polling, RC. Names, triggers, buttons and macros are kept.')) return
+                        if (!window.confirm(t.resetConfirm)) return
                         edit(() => {
                           profile.sticks.forEach((s, i) => {
                             stick.setDeadzone(s, { begin: 50, end: 1000, beginAnti: 0, endAnti: 1000 })
@@ -1585,10 +1587,10 @@ export default function App(): JSX.Element {
                           fun.extend.setRsAntiJitter(fd, 11)
                         })
                         reloadDesignFromPad()
-                        setMsg('Everything reset to stock neutral — Write to apply it to the pad.')
+                        setMsg(t.resetDone)
                       }}
                     >
-                      RESET EVERYTHING
+                      {t.resetButton}
                     </button>
                   </div>
 
@@ -1600,8 +1602,8 @@ export default function App(): JSX.Element {
           <AnalyticsPanel
             context={
               profile && fd
-                ? 'Now editing P' + slot + ': set ' + gearHz.toLocaleString() + ' Hz (gear ' + gear + ') · ' + resBits + '-bit (' + bitsToLevels(resBits).toLocaleString() + ' levels) — green chart is measured input, not the set rate.'
-                : 'Connect and load a slot — then switch gear or RC, write, and watch this chart.'
+                ? t.analyticsEditing(slot, gearHz.toLocaleString(), gear, resBits, bitsToLevels(resBits).toLocaleString())
+                : t.analyticsIdle
             }
           />
         </div>

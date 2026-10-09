@@ -24,6 +24,7 @@ const api = {
   calibration: (state: number) => call<boolean>('device:calibration', state),
   openExternal: (url: string) => call<boolean>('system:openExternal', url),
   version: () => call<string>('system:version'),
+  setLanguage: (lang: string) => call<boolean>('system:setLanguage', lang),
   ping: (count: number) =>
     call<{ count: number; samples: number[]; min: number; max: number; median: number; mean: number }>('diag:ping', count),
   on: (channel: string, fn: (payload: any) => void): (() => void) => {
