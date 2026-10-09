@@ -61,7 +61,9 @@ check('raw wires land at Fun_Data +16/+17/+18', bytes[0x20 + 16] === 200 && byte
   check('mid-slot interpolation is sane', q[2].x === 128 && q[2].y === 100, `${q[2].x}/${q[2].y}`)
   const grown = addDesignPoint([{ x: 0, y: 0 }, { x: 255, y: 255 }])
   check('add point splits longest segment', grown.length === 3 && grown[1].x === 128, grown.map((p) => `${p.x}/${p.y}`).join(' '))
-  check('add point caps at 8', addDesignPoint(eight).length === 8)
+  check('add point grows 8 to 9', addDesignPoint(eight).length === 9)
+  const ten = [...eight, { x: 200, y: 210 }, { x: 230, y: 240 }]
+  check('add point caps at 10 (full)', addDesignPoint(ten).length === 10)
 }
 for (const gear of [0, 1, 2, 3, 4, 5]) {
   fun.extend.setReportRateGear(p.funData, gear)

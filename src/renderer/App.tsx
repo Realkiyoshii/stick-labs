@@ -245,6 +245,34 @@ const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: 
     label: 'Expo',
     hint: 'late surge',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 16 }, { x: 128, y: 70 }, { x: 191, y: 158 }, { x: 255, y: 255 }]
+  },
+  sacreds: {    label: 'Sacreds',
+    hint: 'Hyperstrike-style smooth fast start, 10 points',
+    pts: [
+      { x: 0, y: 0 },
+      { x: 26, y: 41 },
+      { x: 49, y: 72 },
+      { x: 76, y: 107 },
+      { x: 102, y: 140 },
+      { x: 133, y: 157 },
+      { x: 153, y: 177 },
+      { x: 168, y: 197 },
+      { x: 191, y: 223 },
+      { x: 229, y: 255 }
+    ]
+  },
+  machixo: {
+    label: 'Machixo',
+    hint: 'Slow-start desensitized, tops at 94%',
+    pts: [
+      { x: 0, y: 0 },
+      { x: 20, y: 15 },
+      { x: 82, y: 61 },
+      { x: 133, y: 99 },
+      { x: 184, y: 138 },
+      { x: 235, y: 176 },
+      { x: 255, y: 240 }
+    ]
   }
 }
 
@@ -737,7 +765,7 @@ export default function App(): JSX.Element {
       return true
     }
   })
-  // Free-point curve design (2–8 pts). The pad only stores 5, so this is a
+  // Free-point curve design (2–10 pts). The pad only stores 5, so this is a
   // design canvas — `quantized` is what actually gets written. Persisted per
   // slot+stick so a half-finished shape survives a reload.
   const [design, setDesign] = useState<Array<{ x: number; y: number }>>([])
@@ -1423,7 +1451,7 @@ export default function App(): JSX.Element {
 
                   <div className="card">
                     <h3>Custom curve designer — {design.length} points</h3>
-                    <div className="hint">The pad stores exactly <strong>5 points</strong>, so this is a free-point canvas (2–8): <span style={{ color: '#7db8ff' }}>● blue = your design, drag it</span>, <span style={{ color: 'var(--warn)' }}>▢ orange dashed = the 5 bytes that will be written</span>. Dual-zone presets mimic a dynamic response — the pad has no speed sensing, so this is the static LUT a dynamic curve averages to.</div>
+                    <div className="hint">The pad stores exactly <strong>5 points</strong>, so this is a free-point canvas (2–10): <span style={{ color: '#7db8ff' }}>● blue = your design, drag it</span>, <span style={{ color: 'var(--warn)' }}>▢ orange dashed = the 5 bytes that will be written</span>. Dual-zone presets mimic a dynamic response — the pad has no speed sensing, so this is the static LUT a dynamic curve averages to.</div>
                     <CurvePlot points={design.length >= 2 ? design : padCurve} onChange={(next) => setDesign(next)} overlay={quantized} />
                     <div className="row" style={{ gap: 8, margin: '8px 0' }}>
                       <span className={curvePending ? 'pill warn' : 'pill good'}>{curvePending ? 'design ≠ pad — send it' : 'pad matches design'}</span>

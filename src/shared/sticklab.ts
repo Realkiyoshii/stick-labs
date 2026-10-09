@@ -130,7 +130,7 @@ export function rcStepResponse(level: number, frames = 60): number[] {
 export const HW_CURVE_XS: ReadonlyArray<number> = [0, 64, 128, 191, 255]
 
 export const DESIGN_MIN_POINTS = 2
-export const DESIGN_MAX_POINTS = 8
+export const DESIGN_MAX_POINTS = 10
 
 function clampByte(v: number): number {
   return Math.max(0, Math.min(255, Math.round(v)))
