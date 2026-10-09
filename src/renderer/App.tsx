@@ -786,11 +786,20 @@ export default function App(): JSX.Element {
   async function connect(path: string): Promise<void> {
     setErr(null)
     try {
+      const cand = candidates.find((c) => c.path === path)
+      const pre = identifyModel(cand?.product, cand?.productId) ?? null
+      if (pre && pre.support === 'unsupported') {
+        // Known-unsupportable (e.g. DLL-driven pads with no HID listener):
+        // don't waste 10 s timing out a handshake that cannot answer.
+        setModel(pre)
+        setPid(cand?.productId ?? null)
+        setMsg(`${pre.marketingName} detected — ${pre.supportNote}`)
+        return
+      }
       const res = await api().connect(path)
       setConnPath(path)
       setConnected(true)
       setInfo(res)
-      const cand = candidates.find((c) => c.path === path)
       setPid(cand?.productId ?? null)
       const m = identifyModel(cand?.product, cand?.productId) ?? null
       setModel(m)

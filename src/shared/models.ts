@@ -11,7 +11,7 @@
  * mode); pids[] is documentation for the UI, not a filter.
  */
 
-export type SupportLevel = 'full' | 'detect-only'
+export type SupportLevel = 'full' | 'detect-only' | 'unsupported'
 
 export interface ReportRateGear {
   gear: number
@@ -116,6 +116,20 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
     supportNote: 'Layout proven: 1935-byte blob (Name32, Fun32, 16x7, 9x169, 2x32 triggers, 2x36 sticks at 0x6E1, 2x41 motion, Ext8/9), same 36-byte stick packet and Fun_Data offsets as G7ProCE, same 0xFE calibration. Verified against live dumps.'
   },
   {
+    id: 'T3Pro',
+    marketingName: 'GameSir Tarantula Pro',
+    vendorId: 0x3537,
+    usagePage: 0xfff0,
+    usage: 0x40,
+    pids: [0x1050, 0x103e, 0x100b, 0x1042],
+    productHints: ['Tarantula Pro', 'T3Pro'],
+    reportRates: [],
+    profileLength: 0,
+    dumpLength: 0,
+    support: 'unsupported',
+    supportNote: 'This model is driven by GameSir\u2019s native DLL (HandleByDll), not the HID command channel — it has no 0x0F listener, so even the handshake cannot answer. Use GameSir Connect for it; no HID app can configure it.'
+  },
+  {
     id: 'C2',
     marketingName: 'GameSir Cyclone 2',
     vendorId: 0x3537,
@@ -152,8 +166,17 @@ export function identifyModel(product: string | undefined, productId?: number): 
   for (const m of MODELS) {
     if (m.id === 'G7ProCE' && m.productHints.some((h) => hay.includes(h.toLowerCase()))) return m
   }
+  // Longest hint wins, so 'Tarantula Pro' beats 'Tarantula'.
+  let best: ControllerModel | null = null
+  let bestLen = -1
   for (const m of MODELS) {
-    if (m.id !== 'G7ProCE' && m.productHints.some((h) => hay.includes(h.toLowerCase()))) return m
+    if (m.id === 'G7ProCE') continue
+    for (const h of m.productHints) {
+      if (hay.includes(h.toLowerCase()) && h.length > bestLen) {
+        best = m
+        bestLen = h.length
+      }
+    }
   }
-  return null
+  return best
 }
