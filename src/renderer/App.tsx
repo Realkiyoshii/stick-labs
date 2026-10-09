@@ -240,8 +240,7 @@ const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: 
     label: 'Steady track',
     hint: 'Apex-style even pull',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 52 }, { x: 128, y: 112 }, { x: 191, y: 188 }, { x: 255, y: 255 }]
-  },
-  expo: {
+  },  expo: {
     label: 'Expo',
     hint: 'late surge',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 16 }, { x: 128, y: 70 }, { x: 191, y: 158 }, { x: 255, y: 255 }]
@@ -751,7 +750,6 @@ export default function App(): JSX.Element {
   const [err, setErr] = useState<string | null>(null)
   const [which, setWhich] = useState(0)
   const [live, setLive] = useState<LiveSample | null>(null)
-  const [rawRes, setRawRes] = useState('')
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
   const [measuring, setMeasuring] = useState<{ left: number; suggestion: { dev: number; pct10: number } | null } | null>(null)
@@ -907,7 +905,6 @@ export default function App(): JSX.Element {
       setBlob(b64ToBytes(res.bytes))
       setSlot(s)
       setDirty(false)
-      setRawRes('')
       setLoadId((n) => n + 1)
     } catch (e) {
       setErr((e as Error).message)
@@ -1253,8 +1250,8 @@ export default function App(): JSX.Element {
                   </div>
 
                   <div className="card">
-                    <h3>Bit depth — 8–12 bit + raw unlock</h3>
-                    <div className="hint">Hardware ADC max is 12-bit (4096 levels). Wire = 12 − bits. Raw bytes outside 0–4 are experimental.</div>
+                    <h3>Bit depth — 8–24</h3>
+                    <div className="hint">Hardware tops at 12-bit — past that the pad clamps or ignores, prove it on the crosshair.</div>
                     <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
                       {STICK_RESOLUTION_OPTIONS.map((o) => (
                         <button
@@ -1262,44 +1259,14 @@ export default function App(): JSX.Element {
                           className={`btn sm${resBits === o.bits ? ' primary' : ' ghost'}`}
                           onClick={() => edit(() => fun.extend.setStickResolutionBits(fd, o.bits))}
                         >
-                          {o.bits}-bit · {bitsToLevels(o.bits).toLocaleString()}
+                          {o.bits}-bit
                         </button>
                       ))}
-                    </div>
-                    <div className="row spread">
-                      <span className="label">Wire byte (Fun_Data +16): {resWire}</span>
-                      <span className="mono">{resInfo.label}</span>
-                    </div>
-                    <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                      <input
-                        className="input"
-                        style={{ width: 120 }}
-                        placeholder={`wire ${resWire}`}
-                        value={rawRes}
-                        onChange={(e) => setRawRes(e.target.value)}
-                      />
-                      <button
-                        className="btn sm"
-                        onClick={() => {
-                          const w = Number(rawRes)
-                          if (!Number.isFinite(w)) return
-                          edit(() => fun.extend.setStickResolution(fd, Math.max(0, Math.min(255, Math.round(w)))))
-                          setRawRes('')
-                        }}
-                      >
-                        Set raw wire 0–255
-                      </button>
-                      <button className="btn sm ghost" onClick={() => edit(() => fun.extend.setStickResolutionBits(fd, 12))}>
-                        Back to 12-bit
-                      </button>
-                    </div>
-                    <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
-                      <span className="label">Beyond silicon (experimental):</span>
                       {EXTENDED_BITS.map((bits) => (
                         <button
                           key={bits}
-                          className="btn sm ghost"
-                          title={`Writes raw wire ${bitsToWireRaw(bits)} — the 12-bit ADC cannot resolve this; the pad will clamp or ignore it`}
+                          className={`btn sm ghost${resWire === bitsToWireRaw(bits) ? ' primary' : ''}`}
+                          title="Beyond silicon — writes the implied raw wire, expect clamp/ignore"
                           onClick={() => edit(() => fun.extend.setStickResolution(fd, bitsToWireRaw(bits)))}
                         >
                           {bits}-bit*
@@ -1307,7 +1274,7 @@ export default function App(): JSX.Element {
                       ))}
                     </div>
                     <div className="note" style={{ marginTop: 8 }}>
-                      *The ADC tops at 12-bit and the USB stick report is 8-bit per axis — games see 256 steps no matter what. These buttons write the implied raw wire so you can prove it on the live crosshair; expect the pad to clamp or ignore them.
+                      *The ADC tops at 12-bit and the USB stick report is 8-bit per axis — games see 256 steps no matter what.
                     </div>
                     {!resInfo.standard && (
                       <div className="note bad" style={{ marginTop: 8 }}>
@@ -1480,21 +1447,6 @@ export default function App(): JSX.Element {
                         + Add point ({design.length}/{DESIGN_MAX_POINTS})
                       </button>
                       <button
-                        className="btn sm"
-                        title="Left = movement (linear), right = aim (FPS Aim)"
-                        onClick={() => {
-                          if (!profile || !pkt) return
-                          edit(() => {
-                            stick.setCurve(profile.sticks[0], AIM_CURVES.linear.pts.map((p) => ({ ...p })))
-                            stick.setCurve(profile.sticks[1], AIM_CURVES.fpsAim.pts.map((p) => ({ ...p })))
-                          })
-                          reloadDesignFromPad()
-                          setMsg('FPS split applied: left linear (move), right Kiyoshi Curve. Write to keep it.')
-                        }}
-                      >
-                        FPS split L/R
-                      </button>
-                      <button
                         className="btn sm ghost"
                         title="Copy this stick's pad curve to the other stick"
                         onClick={() => {
@@ -1564,8 +1516,80 @@ export default function App(): JSX.Element {
                           </button>
                         )}
                       </div>
-                      <div className="note">Picks always write (100 / 200 / 255-max shown as 300*), but the pad only honors the byte while Output is Mouse — hence the switch button. *300 exceeds the byte — the pad stores 255.</div>
+                      <div className="note">Picks always write (100 / 150 / 200 / 250 / 255-max shown as 300*), but the pad only honors the byte while Output is Mouse. *300 exceeds the byte — the pad stores 255.</div>
                     </div>
+                  </div>
+
+                  <div className="card">
+                    <h3>Shape</h3>
+                    <div className="hint">Three shapes for this stick — processing on for the first two, fully bypassed for raw.</div>
+                    <div className="stack" style={{ gap: 8 }}>
+                      {(
+                        [
+                          { name: 'Round diagonals', hint: 'Uniform reach all directions (FPS aim)' },
+                          { name: 'Square gate', hint: 'Diagonals reach full deflection (hotter corners)' },
+                          { name: 'Pure raw 1:1', hint: 'No processing — untouched magnetic signal' }
+                        ] as const
+                      ).map((s) => {
+                        const isRaw = !stick.enabled(pkt)
+                        const isSquare = stick.enabled(pkt) && stick.squareGate(pkt)
+                        const isRound = stick.enabled(pkt) && !stick.squareGate(pkt)
+                        const active = (s.name === 'Round diagonals' && isRound) || (s.name === 'Square gate' && isSquare) || (s.name === 'Pure raw 1:1' && isRaw)
+                        return (
+                          <button
+                            key={s.name}
+                            className={`btn sm${active ? ' primary' : ' ghost'}`}
+                            title={s.hint}
+                            onClick={() => {
+                              edit(() => {
+                                if (s.name === 'Pure raw 1:1') {
+                                  stick.setEnabled(pkt, false)
+                                } else {
+                                  stick.setEnabled(pkt, true)
+                                  stick.setSquareGate(pkt, s.name === 'Square gate')
+                                }
+                              })
+                            }}
+                          >
+                            {s.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="card" style={{ borderColor: 'var(--bad)' }}>
+                    <h3>Reset everything</h3>
+                    <div className="hint">Returns every byte this app can write to stock neutral — both sticks (deadzone, curve, flips, gate, axis, mouse rate, outputs), outer unlimited, 12-bit, 8K polling, RC off. Names, triggers, buttons and macros are untouched. Then Write to apply.</div>
+                    <button
+                      className="btn danger"
+                      style={{ width: '100%', padding: '14px', fontSize: 15, fontWeight: 700, letterSpacing: '0.08em', marginTop: 10 }}
+                      onClick={() => {
+                        if (!profile || !fd) return
+                        if (!window.confirm('Reset EVERYTHING this app controls to stock neutral?\n\nBoth sticks, outer, detail, polling, RC. Names, triggers, buttons and macros are kept.')) return
+                        edit(() => {
+                          profile.sticks.forEach((s, i) => {
+                            stick.setDeadzone(s, { begin: 50, end: 1000, beginAnti: 0, endAnti: 1000 })
+                            stick.setCurve(s, LINEAR_CURVE.map((p) => ({ ...p })))
+                            stick.setFlipX(s, false)
+                            stick.setFlipY(s, false)
+                            stick.setSquareGate(s, false)
+                            stick.setAxisRatio(s, 50)
+                            stick.setMouseDpi(s, 50)
+                            stick.setMapIndex(s, i === 0 ? 1 : 2)
+                            stick.setMapped(s, true)
+                          })
+                          fun.extend.setStickResolutionBits(fd, 12)
+                          fun.extend.setReportRateGear(fd, 5)
+                          fun.extend.setLsAntiJitter(fd, 11)
+                          fun.extend.setRsAntiJitter(fd, 11)
+                        })
+                        reloadDesignFromPad()
+                        setMsg('Everything reset to stock neutral — Write to apply it to the pad.')
+                      }}
+                    >
+                      RESET EVERYTHING
+                    </button>
                   </div>
 
                 </div>
