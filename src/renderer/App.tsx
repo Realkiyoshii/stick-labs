@@ -410,7 +410,7 @@ function download(filename: string, data: Uint8Array | string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen }: { connected: boolean; activeSlot: number | null; locked: boolean; modelId: string; modelLen: number }): JSX.Element {
+function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpLength, modelName }: { connected: boolean; activeSlot: number | null; locked: boolean; modelId: string; modelLen: number; dumpLength: number; modelName: string | null }): JSX.Element {
   const [entries, setEntries] = useState<SlotEntry[]>([1, 2, 3, 4].map((index) => ({ index, name: null, bytes: null, loading: false, error: null })))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -572,7 +572,55 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen }: { c
   }
 
   if (!connected) return <div className="note">Connect a controller to manage stick profiles.</div>
-  if (locked) return <div className="note">Profile backup is disabled for this model — its profile layout is unverified, so reads and writes stay off.</div>
+  if (locked) {
+    return (
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3>Locked — {modelName ?? 'unknown model'}</h3>
+        <div className="hint">Profile backup is disabled for this model — its profile layout is unverified, so reads and writes stay off.</div>
+        {dumpLength > 0 ? (
+          <div className="row" style={{ gap: 8, marginTop: 10 }}>
+            <button
+              className="btn sm"
+              disabled={busy}
+              title="Read-only: dumps all 4 slots for support analysis. Writes nothing."
+              onClick={() => void (async () => {
+                setBusy(true)
+                setMessage(null)
+                try {
+                  const dump: Record<string, { name: string; bytes: string }> = {}
+                  for (const s of [1, 2, 3, 4]) {
+                    const res = await api().readProfile(s, dumpLength)
+                    const bytes = b64ToBytes(res.bytes)
+                    let name = ''
+                    try {
+                      name = parseProfile(bytes, modelId).name
+                    } catch {
+                      name = ''
+                    }
+                    dump[String(s)] = { name, bytes: bytesToB64(bytes) }
+                  }
+                  download(
+                    `sticklabs-dump-${modelId}-${new Date().toISOString().slice(0, 10)}.json`,
+                    JSON.stringify({ version: 1, app: 'stick-labs-dump', model: modelId, length: dumpLength, profiles: dump }, null, 2)
+                  )
+                  setMessage('Dump downloaded — send it to RealKiyoshi to unlock this model.')
+                } catch (e) {
+                  setMessage(`Dump failed: ${(e as Error).message}`)
+                } finally {
+                  setBusy(false)
+                }
+              })()}
+            >
+              {busy ? 'Reading…' : 'Export raw dump for support'}
+            </button>
+            {message && <span className="pill">{message}</span>}
+          </div>
+        ) : (
+          <div className="note" style={{ marginTop: 10 }}>No dump length is known for this model yet, so even read-only export stays off.</div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -758,9 +806,23 @@ export default function App(): JSX.Element {
         // else stays locked — this is what keeps a foreign layout safe.
         setMsg('Unknown edition — proving compatibility (read-only check)…')
         try {
-          const probe = await api().readProfile(res.currentProfile, PROFILE_LENGTH)
-          const bytes = b64ToBytes(probe.bytes)
-          if (looksLikeCEProfile(bytes)) {
+          // Try the running slot first, then every user slot: a single
+          // family-shaped read anywhere unlocks the pad.
+          const tried = [res.currentProfile, 1, 2, 3, 4].filter((s, i, a) => s >= 1 && s <= 5 && a.indexOf(s) === i)
+          let proven: Uint8Array | null = null
+          for (const s of tried) {
+            try {
+              const probe = await api().readProfile(s, PROFILE_LENGTH)
+              const bytes = b64ToBytes(probe.bytes)
+              if (looksLikeCEProfile(bytes)) {
+                proven = bytes
+                break
+              }
+            } catch {
+              /* next slot */
+            }
+          }
+          if (proven) {
             const ce = MODELS.find((x) => x.id === 'G7ProCE')
             const variant: ControllerModel = {
               ...(ce ?? {
@@ -773,6 +835,7 @@ export default function App(): JSX.Element {
                 productHints: [],
                 reportRates: REPORT_RATE_OPTIONS.map((o) => ({ gear: o.gear, hz: o.hz, confirmed: o.confirmed })),
                 profileLength: 1070,
+                dumpLength: 1070,
                 support: 'full',
                 supportNote: ''
               }),
@@ -967,11 +1030,6 @@ export default function App(): JSX.Element {
           >
             Copy diagnostics
           </button>
-          <div className="note">Wired or 2.4G receiver only — Bluetooth exposes no config interface, so the pad won't appear that way.</div>
-          <div className="note">Not just the 8K: G7 Pro 8K · G7 Pro · Tarantula 8K tuner. Unlisted editions auto-check on connect.</div>
-          {candidates.length > visibleCandidates.length && (
-            <div className="note">{candidates.length - visibleCandidates.length} idle receiver(s) hidden — only live pads shown.</div>
-          )}
           {visibleCandidates.map((c) => {
             const known = identifyModel(c.product, c.productId)
             return (
@@ -1477,7 +1535,7 @@ export default function App(): JSX.Element {
               </div>
             </>
           )}
-          <ProfilesPanel connected={connected} activeSlot={info?.currentProfile ?? null} locked={locked} modelId={modelId} modelLen={modelLen} />
+          <ProfilesPanel connected={connected} activeSlot={info?.currentProfile ?? null} locked={locked} modelId={modelId} modelLen={modelLen} dumpLength={model?.dumpLength ?? 0} modelName={model?.marketingName ?? null} />
           <AnalyticsPanel
             context={
               profile && fd

@@ -176,6 +176,22 @@ export const GEOMETRIES: Record<string, ModelGeometry> = {
     triggers: { offset: 0x6a1, count: 2, len: 32 },
     sticks: { offset: 0x6e1, count: 2, len: 36 },
     motion: { offset: 0x729, count: 2, len: 41 }
+  },
+  /**
+   * C2 (Cyclone 2) — third family, from the bundle's own sequential parser:
+   * Name32, Fun32, 16x7, 2x159 macros (FL1/FR1), 2x28 triggers, 2x32 sticks,
+   * 2x33 motion = 680. Stick deadzones/curves are SINGLE bytes here, so the
+   * shared u16BE accessors must never run on these packets — geometry parse
+   * exists for dump validation only until hardware proves the semantics.
+   */
+  C2: {
+    total: 680,
+    funOffset: 0x020,
+    buttons: { offset: 0x040, count: 16, len: 7 },
+    functionKeys: [{ offset: 0x0b0, count: 2, len: 159 }],
+    triggers: { offset: 0x1ee, count: 2, len: 28 },
+    sticks: { offset: 0x226, count: 2, len: 32 },
+    motion: { offset: 0x266, count: 2, len: 33 }
   }
 }
 

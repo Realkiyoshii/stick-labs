@@ -33,6 +33,11 @@ export interface ControllerModel {
   reportRates: ReportRateGear[]
   /** Total profile blob length; 0 when unconfirmed. */
   profileLength: number
+  /**
+   * Read length for support dumps (bundle-known even when the layout is
+   * unverified). 0 = unknown, dump button stays off.
+   */
+  dumpLength: number
   support: SupportLevel
   supportNote: string
 }
@@ -55,6 +60,7 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
       { gear: 5, hz: 8000, confirmed: true }
     ],
     profileLength: 1070,
+    dumpLength: 1070,
     support: 'full',
     supportNote: 'Profile codec proven byte-exact against hardware fixtures.'
   },
@@ -72,6 +78,7 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
       { gear: 2, hz: 1000, confirmed: false }
     ],
     profileLength: 1070,
+    dumpLength: 1070,
     support: 'full',
     supportNote: 'Reuses the G7ProCE proxy wholesale in the GameSir bundle: identical 1070-byte profile, 36-byte stick packet, Fun_Data offsets and 0xFE calibration. Only the gear table (250/500/1000) differs.'
   },
@@ -85,6 +92,7 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
     productHints: ['G7 SE', 'G7SE', 'SL3101', '3101'],
     reportRates: [],
     profileLength: 0,
+    dumpLength: 0,
     support: 'detect-only',
     supportNote: 'Firmware-update-only in the GameSir bundle (Modes:[] — no config UI, no vendor-interface matcher). No tuning channel is known; tuning stays locked.'
   },
@@ -103,8 +111,28 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
       { gear: 5, hz: 8000, confirmed: false }
     ],
     profileLength: 1935,
+    dumpLength: 1935,
     support: 'full',
     supportNote: 'Layout proven: 1935-byte blob (Name32, Fun32, 16x7, 9x169, 2x32 triggers, 2x36 sticks at 0x6E1, 2x41 motion, Ext8/9), same 36-byte stick packet and Fun_Data offsets as G7ProCE, same 0xFE calibration. Verified against live dumps.'
+  },
+  {
+    id: 'C2',
+    marketingName: 'GameSir Cyclone 2',
+    vendorId: 0x3537,
+    usagePage: 0xfff0,
+    usage: 0x40,
+    pids: [0x101d, 0x102a, 0x1053, 0x100b],
+    productHints: ['Cyclone', 'C2'],
+    reportRates: [
+      { gear: 0, hz: 250, confirmed: false },
+      { gear: 2, hz: 1000, confirmed: false },
+      { gear: 4, hz: 4000, confirmed: false },
+      { gear: 5, hz: 8000, confirmed: false }
+    ],
+    profileLength: 0,
+    dumpLength: 680,
+    support: 'detect-only',
+    supportNote: 'Third protocol family (680-byte profile, 32-byte single-byte stick packets, no resolution/anti-jitter bytes, 0xFD calibration). Layout mapped from the GameSir bundle — tuning locked until a live dump proves it.'
   }
 ]
 
