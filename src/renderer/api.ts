@@ -49,6 +49,7 @@ interface LabApi {
   ping(count: number): Promise<PingResult>
   openExternal(url: string): Promise<boolean>
   version(): Promise<string>
+  setLanguage(lang: string): Promise<boolean>
   on(channel: string, fn: (payload: never) => void): () => void
 }
 

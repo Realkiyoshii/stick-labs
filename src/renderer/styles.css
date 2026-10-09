@@ -177,6 +177,12 @@ textarea {
   gap: 6px;
 }
 
+.lang-section {
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+}
+
 .status-row {
   display: flex;
   align-items: center;

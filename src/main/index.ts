@@ -145,6 +145,12 @@ handle('system:openExternal', (url: string) => {
   return true
 })
 handle('system:version', () => app.getVersion())
+// UI language chosen in the renderer; only the update dialog reads it here.
+let uiLang: 'en' | 'ru' = 'en'
+handle('system:setLanguage', (lang: string) => {
+  uiLang = lang === 'ru' ? 'ru' : 'en'
+  return true
+})
 handle('diag:ping', async (count: number) => {
   const n = Math.max(1, Math.min(50, count))
   const samples: number[] = []
@@ -204,9 +210,12 @@ app.whenReady().then(() => {
         void dialog
           .showMessageBox(window_, {
             type: 'info',
-            buttons: ['Restart now', 'Later'],
+            buttons: uiLang === 'ru' ? ['Перезапустить', 'Позже'] : ['Restart now', 'Later'],
             defaultId: 0,
-            message: 'Stick Labs update downloaded — restart to install it?'
+            message:
+              uiLang === 'ru'
+                ? 'Обновление Stick Labs загружено — перезапустить для установки?'
+                : 'Stick Labs update downloaded — restart to install it?'
           })
           .then(({ response }) => {
             if (response === 0) autoUpdater.quitAndInstall()
