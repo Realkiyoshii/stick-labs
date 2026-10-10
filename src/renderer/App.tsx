@@ -2416,7 +2416,7 @@ export default function App(): JSX.Element {
                       {EXTENDED_BITS.map((bits) => (
                         <button
                           key={bits}
-                          className={`btn sm ghost${resWire === bitsToWireRaw(bits) ? ' primary' : ''}`}
+                          className={`btn sm${resWire === bitsToWireRaw(bits) ? ' primary' : ' ghost'}`}
                           title="Beyond silicon — writes the implied raw wire, expect clamp/ignore"
                           onClick={() => edit(() => fun.extend.setStickResolution(fd, bitsToWireRaw(bits)))}
                         >
