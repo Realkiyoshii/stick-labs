@@ -8,6 +8,7 @@
  *   - decoding the 0x12 input report into a usable state object
  */
 import { Transport, discover } from './hid'
+import { centerNudge, centerPreview, checkCenterAck, type CenterDirection } from '../shared/center'
 import {
   PROFILE_LENGTH,
   LIGHT_PROFILE_LENGTH,
@@ -50,6 +51,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 export interface LiveInput {
+  centerRaw?: { lx: number; ly: number; rx: number; ry: number }
   lx: number
   ly: number
   rx: number
@@ -433,6 +435,18 @@ export class Controller {
     this.transport.write(setLightStatus(isPlaying, frameIndex))
   }
 
+  /** Apply one global center nudge and require its dedicated success reply. */
+  async adjustCenter(side: number, direction: CenterDirection): Promise<void> {
+    const command = centerNudge(side, direction)
+    let raw: Uint8Array
+    try {
+      raw = await this.request(command, (p) => p.type === 0xe3, 2000)
+    } catch (e) {
+      throw new Error('Center adjustment outcome is unknown. Check the live center before repeating. ' + (e as Error).message)
+    }
+    checkCenterAck(raw)
+  }
+
   /**
    * Drive calibration: `0x0F 0xFE <calType> <partMask>` — **not** `0x0F 0xFD`.
    *
@@ -535,6 +549,7 @@ export function decodeInput(raw: Uint8Array): LiveInput | null {
   const battery = raw[36]
 
   return {
+    centerRaw: centerPreview(raw),
     lx,
     ly,
     rx,

@@ -17,6 +17,20 @@ Hardware truth: the ADC maxes at **12-bit (4096 levels)**. Raw wires outside
 `0–4` (resolution) / `1–21` (RC) are stored byte-exact and flagged red — the
 firmware may clamp or ignore them.
 
+## Center offsets (G7 Pro 8K)
+
+The **Center offsets** page adjusts each stick's resting center with directional
+nudge buttons or mouse dragging. It uses the G7ProCE commands from GameSir Connect
+1.16.7 and displays live original-axis values, including their low bytes.
+Adjustments apply immediately across all controller profiles; they are separate
+from profile exports and do not require a profile write. There is no verified
+absolute-offset readback or reset command; recalibration restores the default.
+Controls require fresh input with the stick near center. Mouse release cancels
+queued nudges, although a command already sent may finish. Other controller models
+are gated out until their commands are verified.
+
+Run the focused protocol checks with `node scripts/test.mjs tests/center.ts`.
+
 ## Run
 
 ```powershell

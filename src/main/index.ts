@@ -8,6 +8,8 @@ import { Controller, type DeviceInfo } from './controller'
 import { discover, discoverLive } from './hid'
 import { steamInfo, exportApexDeadzones, listInstalledGames, exportDeadzonesToGames } from './steam'
 import { PROFILE_LENGTH } from '../shared/protocol'
+import { identifyModel } from '../shared/models'
+import type { CenterDirection } from '../shared/center'
 import { MariusReader, discoverMarius } from './marius'
 
 const controller = new Controller()
@@ -139,7 +141,25 @@ handle('profile:switch', async (profile: number) => {
   return true
 })
 handle('profile:current', async () => controller.getCurrentProfile())
+let centerBusy = false
+handle('device:adjustCenter', async (side: number, direction: CenterDirection) => {
+  const device = discover().find((d) => d.path === controller.transport.currentPath)
+  if (!controller.isOpen || !device || identifyModel(device.product, device.productId)?.id !== 'G7ProCE') {
+    throw new Error('Center adjustment is currently supported only for identified G7 Pro 8K controllers.')
+  }
+  if (centerBusy) throw new Error('Wait for the current center adjustment to finish.')
+  const input = controller.latestInput
+  const axes = input?.centerRaw
+  const x = axes ? side === 0 ? axes.lx : axes.rx : NaN
+  const y = axes ? side === 0 ? axes.ly : axes.ry : NaN
+  if (!input?.live || Date.now() - input.timestamp >= 1000 || input.calMask || !(Math.abs(x) <= .3 && Math.abs(y) <= .3)) {
+    throw new Error('Release the stick near center, finish calibration, and wait for fresh input before adjusting.')
+  }
+  centerBusy = true
+  try { await controller.adjustCenter(side, direction); return true } finally { centerBusy = false }
+})
 handle('device:calibration', (state: number) => {
+  if (centerBusy) throw new Error('Wait for the current center adjustment to finish.')
   controller.calibration(state)
   return true
 })

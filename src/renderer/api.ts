@@ -28,6 +28,7 @@ export interface PingResult {
   mean: number
 }
 export interface LiveSample {
+  centerRaw?: { lx: number; ly: number; rx: number; ry: number }
   lx: number
   ly: number
   rx: number
@@ -42,6 +43,7 @@ export interface LiveSample {
 }
 
 interface LabApi {
+  adjustCenter(side: number, direction: import('../shared/center').CenterDirection): Promise<boolean>
   discover(): Promise<Candidate[]>
   connect(path: string): Promise<DeviceInfo>
   disconnect(): Promise<boolean>
