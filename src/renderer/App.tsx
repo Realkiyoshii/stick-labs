@@ -621,6 +621,73 @@ function LockedDump({ modelId, modelName, defaultLength }: { modelId: string; mo
   )
 }
 
+const CAL_STEPS = ['Ready', 'Session open', 'Sample 1 of 2', 'Sample 2 of 2', 'Done']
+
+function StickDial({ x, y, label }: { x: number; y: number; label: string }): JSX.Element {
+  const ref = useRef<HTMLCanvasElement | null>(null)
+  const trail = useRef<Array<{ x: number; y: number }>>([])
+  const nx = (x - 128) / 128
+  const ny = (y - 128) / 128
+  trail.current.push({ x: nx, y: ny })
+  if (trail.current.length > 90) trail.current.splice(0, trail.current.length - 90)
+  useEffect(() => {
+    const c = ref.current
+    if (!c) return
+    const dpr = window.devicePixelRatio || 1
+    const S = 120
+    c.width = S * dpr
+    c.height = S * dpr
+    const ctx = c.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, S, S)
+    const cx = S / 2
+    const cy = S / 2
+    const R = S / 2 - 8
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#3a2230'
+    ctx.beginPath()
+    ctx.arc(cx, cy, R, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.strokeStyle = '#552c38'
+    ctx.beginPath()
+    ctx.moveTo(cx - R, cy)
+    ctx.lineTo(cx + R, cy)
+    ctx.moveTo(cx, cy - R)
+    ctx.lineTo(cx, cy + R)
+    ctx.stroke()
+    // ±2-step rest zone
+    ctx.strokeStyle = '#3fa46a'
+    ctx.beginPath()
+    ctx.arc(cx, cy, Math.max(2, (2 / 128) * R), 0, Math.PI * 2)
+    ctx.stroke()
+    const pts = trail.current
+    if (pts.length > 1) {
+      ctx.strokeStyle = '#f0a030'
+      ctx.beginPath()
+      pts.forEach((p, i) => {
+        const px = cx + Math.max(-1, Math.min(1, p.x)) * R
+        const py = cy + Math.max(-1, Math.min(1, p.y)) * R
+        if (i === 0) ctx.moveTo(px, py)
+        else ctx.lineTo(px, py)
+      })
+      ctx.stroke()
+    }
+    ctx.fillStyle = '#ff8fa0'
+    ctx.beginPath()
+    ctx.arc(cx + Math.max(-1, Math.min(1, nx)) * R, cy + Math.max(-1, Math.min(1, ny)) * R, 4, 0, Math.PI * 2)
+    ctx.fill()
+  })
+  const fmt = (v: number): string => `${v > 0 ? `+${v}` : `${v}`}`
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div className="label">{label}</div>
+      <canvas ref={ref} style={{ width: 120, height: 120 }} />
+      <div className="mono" style={{ fontSize: 11 }}>x {fmt(x - 128)} · y {fmt(y - 128)}</div>
+    </div>
+  )
+}
+
 function CalibrationPanel(): JSX.Element {
   const [live, setLive] = useState<LiveSample | null>(null)
   const liveRef = useRef<LiveSample | null>(null)
@@ -629,12 +696,21 @@ function CalibrationPanel(): JSX.Element {
   const [note, setNote] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [flow, setFlow] = useState<null | { kind: 'quick' | 'step'; step: number; label: string; progress: number }>(null)
+  const flowId = useRef(0)
+  const stillRef = useRef<Array<{ t: number; dev: number }>>([])
+
+  useEffect(() => () => { flowId.current++ }, [])
 
   useEffect(() => {
     const off = api().on('input:sample', (s) => {
       const v = s as unknown as LiveSample
       liveRef.current = v
       setLive(v)
+      const dev = Math.max(Math.abs(v.lx - 128), Math.abs(v.ly - 128), Math.abs(v.rx - 128), Math.abs(v.ry - 128))
+      const now = Date.now()
+      stillRef.current.push({ t: now, dev })
+      while (stillRef.current.length > 0 && now - stillRef.current[0].t > 4000) stillRef.current.shift()
     })
     return off
   }, [])
@@ -692,20 +768,220 @@ function CalibrationPanel(): JSX.Element {
     }
   }
 
+  /** Uninterrupted stillness span (ms) at the trailing edge, threshold in steps. */
+  function stillSpan(threshold: number): number {
+    const samples = stillRef.current
+    if (samples.length === 0) return 0
+    const newest = samples[samples.length - 1]
+    if (newest.dev > threshold) return 0
+    let first = newest.t
+    for (let i = samples.length - 2; i >= 0; i--) {
+      if (samples[i].dev > threshold) break
+      first = samples[i].t
+    }
+    return newest.t - first
+  }
+
+  /** DualShock-style stability gate: resolve once still enough, timeout at 20 s. */
+  function gateStill(threshold: number, needMs: number, myId: number, onProgress: (p: number) => void): Promise<'ok' | 'timeout' | 'cancelled'> {
+    return new Promise((resolve) => {
+      const deadline = Date.now() + 20000
+      const tick = (): void => {
+        if (flowId.current !== myId) { resolve('cancelled'); return }
+        if (Date.now() > deadline) { resolve('timeout'); return }
+        const span = stillSpan(threshold)
+        onProgress(Math.min(1, span / needMs))
+        if (span >= needMs) { resolve('ok'); return }
+        window.setTimeout(tick, 100)
+      }
+      tick()
+    })
+  }
+
+  function sampleAfter(): void {
+    window.setTimeout(() => {
+      const v = liveRef.current
+      if (v) setAfter([v.lx, v.ly, v.rx, v.ry].map((x) => x - 128))
+      setNote('Committed. Compare before/after below — both should sit near 0.')
+    }, 1500)
+  }
+
+  /** Fully automatic center calibration: open, stillness-gated, commit. */
+  async function quickCalibrate(): Promise<void> {
+    if (busy || flow) return
+    setErr(null)
+    const v0 = liveRef.current
+    if (!v0) { setErr('No live input — connect the pad first.'); return }
+    flowId.current++
+    const myId = flowId.current
+    setAfter(null)
+    setBefore([v0.lx, v0.ly, v0.rx, v0.ry].map((v) => v - 128))
+    setBusy(true)
+    setFlow({ kind: 'quick', step: 0, label: 'Opening session…', progress: 0 })
+    try {
+      await api().calibration(0)
+      if (flowId.current !== myId) return
+      setNote('Session open — hands off. Sampling stillness…')
+      const r = await gateStill(2, 2500, myId, (p) => {
+        if (flowId.current === myId) setFlow({ kind: 'quick', step: 0, label: 'Hold still — sampling centre…', progress: p })
+      })
+      if (flowId.current !== myId) return
+      if (r !== 'ok') {
+        if (r === 'timeout') {
+          try { await api().calibration(2) } catch { /* already closed */ }
+          if (flowId.current === myId) {
+            setErr('Could not hold still for 2.5 s — session cancelled, nothing written.')
+            setFlow(null)
+          }
+        }
+        return
+      }
+      setFlow({ kind: 'quick', step: 0, label: 'Committing…', progress: 1 })
+      await api().calibration(1)
+      if (flowId.current !== myId) return
+      setNote('Committed — sampling the new rest position…')
+      sampleAfter()
+      setFlow(null)
+    } catch (e) {
+      if (flowId.current === myId) {
+        setErr((e as Error).message)
+        setFlow(null)
+      }
+      try { await api().calibration(2) } catch { /* ignore */ }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function startSteps(): void {
+    if (busy || flow) return
+    setErr(null)
+    if (!liveRef.current) { setErr('No live input — connect the pad first.'); return }
+    flowId.current++
+    setFlow({ kind: 'step', step: 0, label: 'Ready — set the pad down, hands off', progress: 0 })
+  }
+
+  async function exitFlow(): Promise<void> {
+    flowId.current++
+    setFlow(null)
+    if (inCal) await cancel()
+  }
+
+  async function stepNext(): Promise<void> {
+    if (busy || !flow || flow.kind !== 'step') return
+    const myId = flowId.current
+    const s = flow.step
+    const setStep = (step: number, label: string, progress?: number): void => {
+      if (flowId.current === myId) setFlow({ kind: 'step', step, label, progress: progress ?? step / 4 })
+    }
+    setErr(null)
+    if (s === 0) {
+      setAfter(null)
+      const v = liveRef.current
+      if (!v) { setErr('No live input — connect the pad first.'); return }
+      setBefore([v.lx, v.ly, v.rx, v.ry].map((x) => x - 128))
+      setBusy(true)
+      try {
+        await api().calibration(0)
+        if (flowId.current !== myId) return
+        setNote('Session open — hands off, sticks centered.')
+        setStep(1, 'Session open — hands off')
+      } catch (e) {
+        if (flowId.current === myId) setErr((e as Error).message)
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    if (s === 1 || s === 2) {
+      setBusy(true)
+      try {
+        const r = await gateStill(2, 2000, myId, (p) => {
+          if (flowId.current === myId) setFlow({ kind: 'step', step: s, label: 'Hold still — sampling…', progress: s / 4 + p / 4 })
+        })
+        if (flowId.current !== myId) return
+        if (r !== 'ok') {
+          if (r === 'timeout') setErr('Sticks moved during sampling — nothing written. Wait for stillness and press Next to retry.')
+          return
+        }
+        setStep(s + 1, s + 1 === 3 ? 'Samples good — ready to commit' : 'Sample 1 of 2 good')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    if (s === 3) {
+      if (!window.confirm('Commit calibration? The current rest position becomes the new centre. This cannot be undone from a file.')) return
+      setBusy(true)
+      try {
+        await api().calibration(1)
+        if (flowId.current !== myId) return
+        setNote('Committed — sampling the new rest position…')
+        sampleAfter()
+        setStep(4, 'Done')
+      } catch (e) {
+        if (flowId.current === myId) setErr((e as Error).message)
+      } finally {
+        setBusy(false)
+      }
+    }
+  }
+
   const names = ['LX', 'LY', 'RX', 'RY']
   const verdict = !rest ? null : maxDev <= 2 ? 'Centered' : maxDev <= 6 ? 'Mild drift — deadzone covers it' : 'Drifting — calibrate'
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3>Calibration bench</h3>
-      <div className="hint">DualShock-style centering, verified live: the pad reports its own calibration state, and commit stays blocked until the sticks actually rest at centre.</div>
+      <div className="hint">DualShock-style centering, verified live: the pad reports its own calibration state, and commit stays blocked until the sticks actually rest at centre. Guided flows adapted from dualshock-tools.</div>
+      <div className="row" style={{ gap: 20, justifyContent: 'center', margin: '12px 0' }}>
+        {live ? (
+          <>
+            <StickDial x={live.lx} y={live.ly} label="Left" />
+            <StickDial x={live.rx} y={live.ry} label="Right" />
+          </>
+        ) : (
+          <div className="hint">Waiting for live input…</div>
+        )}
+      </div>
       <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
         <span className={`pill${inCal ? ' warn' : ''}`}>{inCal ? `calibrating (target ${live?.calTarget})` : 'idle'}</span>
         {rest && <span className={`pill${maxDev <= 2 ? ' good' : maxDev <= 6 ? ' warn' : ' bad'}`}>{verdict} · ±{maxDev}</span>}
         <div style={{ flex: 1 }} />
-        <button className="btn sm" disabled={busy || inCal} onClick={() => void enter()}>1 · Open</button>
-        <button className="btn sm primary" disabled={busy || !inCal} onClick={() => void commit()}>2 · Commit</button>
-        <button className="btn sm ghost" disabled={busy || !inCal} onClick={() => void cancel()}>Cancel</button>
+        <button className="btn sm primary" disabled={busy || !!flow || !live} onClick={() => void quickCalibrate()}>Quick calibrate</button>
+        <button className="btn sm" disabled={busy || !!flow || !live} onClick={() => startSteps()}>Step-by-step</button>
+      </div>
+      {flow && flow.kind === 'step' && (
+        <div className="row wrap" style={{ gap: 6, margin: '10px 0', alignItems: 'center' }}>
+          {CAL_STEPS.map((label, i) => (
+            <span key={label} className={`pill${flow.step === i ? ' warn' : flow.step > i ? ' good' : ''}`}>{i + 1} · {label}</span>
+          ))}
+          <div style={{ flex: 1 }} />
+          <button className="btn sm primary" disabled={busy} onClick={() => void stepNext()}>{flow.step === 0 ? 'Open session' : flow.step < 3 ? 'Sample' : flow.step === 3 ? 'Commit' : 'Done'}</button>
+          <button className="btn sm ghost" disabled={busy && !inCal} onClick={() => void exitFlow()}>Exit</button>
+        </div>
+      )}
+      {flow && (
+        <div style={{ margin: '10px 0' }}>
+          <div className="row spread">
+            <span className="label">{flow.label}</span>
+            <span className="mono">{Math.round(flow.progress * 100)}%</span>
+          </div>
+          <div style={{ height: 8, borderRadius: 4, background: '#3a2230', overflow: 'hidden', marginTop: 4 }}>
+            <div style={{ height: '100%', width: `${Math.round(flow.progress * 100)}%`, background: '#f0a030', transition: 'width 120ms linear' }} />
+          </div>
+        </div>
+      )}
+      {flow && flow.kind === 'quick' && (
+        <div className="row wrap" style={{ gap: 8, margin: '0 0 10px' }}>
+          <button className="btn sm ghost" onClick={() => void exitFlow()}>Abort</button>
+        </div>
+      )}
+      <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
+        <span className="label">Manual</span>
+        <button className="btn sm" disabled={busy || !!flow || inCal} onClick={() => void enter()}>1 · Open</button>
+        <button className="btn sm primary" disabled={busy || !!flow || !inCal} onClick={() => void commit()}>2 · Commit</button>
+        <button className="btn sm ghost" disabled={busy || !!flow || !inCal} onClick={() => void cancel()}>Cancel</button>
       </div>
       {note && <div className="note" style={{ marginBottom: 8 }}>{note}</div>}
       {err && <div className="note bad" style={{ marginBottom: 8 }}>{err}</div>}
@@ -723,6 +999,7 @@ function CalibrationPanel(): JSX.Element {
         </tbody>
       </table>
       <div className="note" style={{ marginTop: 8 }}>Leave the pad untouched on a table while open. Values are steps off centre (128); ±2 is perfect.</div>
+      <div className="note warn" style={{ marginTop: 8 }}>This bench re-centers the sticks — it cannot fix drift. Drift is worn hardware; replace the sticks, then calibrate. Calibrating around worn sticks may help briefly or make it worse, with no way to undo it.</div>
     </div>
   )
 }
@@ -1006,7 +1283,6 @@ export default function App(): JSX.Element {
   const [live, setLive] = useState<LiveSample | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
-  const [bitCustom, setBitCustom] = useState('')
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
   const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam' | 'calibrate'>('sticks')
   // Virtual sticks for pad-less Steam shaping: real packets, never written
@@ -1953,7 +2229,7 @@ export default function App(): JSX.Element {
 
 
                   <div className="card">
-                    <h3>Bit depth — 8–12</h3>
+                    <h3>Bit depth — 8–24</h3>
                     <div className="hint">Hardware tops at 12-bit. The USB report is 8-bit per axis, so games see 256 steps.</div>
                     <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
                       {STICK_RESOLUTION_OPTIONS.map((o) => (
@@ -1975,30 +2251,6 @@ export default function App(): JSX.Element {
                           {bits}-bit*
                         </button>
                       ))}
-                    </div>
-                    <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                      <input
-                        className="input"
-                        style={{ width: 90 }}
-                        type="number"
-                        min={8}
-                        max={12}
-                        step={1}
-                        placeholder="8–12"
-                        value={bitCustom}
-                        onChange={(e) => setBitCustom(e.target.value)}
-                      />
-                      <button
-                        className="btn sm"
-                        onClick={() => {
-                          const b = Number(bitCustom)
-                          if (!Number.isFinite(b)) return
-                          edit(() => fun.extend.setStickResolutionBits(fd, Math.max(8, Math.min(12, Math.round(b)))))
-                          setBitCustom('')
-                        }}
-                      >
-                        Set custom bits
-                      </button>
                     </div>
                     <div className="note" style={{ marginTop: 8 }}>
                       12-bit is the most the sensor resolves; games receive 256 steps regardless.
