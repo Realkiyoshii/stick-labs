@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { join } from 'node:path'
 import { Controller, type DeviceInfo } from './controller'
 import { discover, discoverLive } from './hid'
+import { steamInfo, exportApexDeadzones, listInstalledGames, exportDeadzonesToGames } from './steam'
 import { PROFILE_LENGTH } from '../shared/protocol'
 
 const controller = new Controller()
@@ -145,6 +146,15 @@ handle('system:openExternal', (url: string) => {
   return true
 })
 handle('system:version', () => app.getVersion())
+handle('steam:info', () => steamInfo())
+handle('steam:export', (left: { begin: number; end: number }, right: { begin: number; end: number }, mouseRate?: number | null, curveExp?: number | null) =>
+  exportApexDeadzones(left, right, mouseRate ?? null, curveExp ?? null)
+)
+handle('steam:games', () => listInstalledGames())
+handle('steam:exportAll', (left: { begin: number; end: number }, right: { begin: number; end: number }, mouseRate?: number | null, curveExp?: number | null) => {
+  const games = listInstalledGames()
+  return { games: listInstalledGames(), result: exportDeadzonesToGames(left, right, games, mouseRate ?? null, curveExp ?? null) }
+})
 handle('diag:ping', async (count: number) => {
   const n = Math.max(1, Math.min(50, count))
   const samples: number[] = []
@@ -170,7 +180,7 @@ function createWindow(): void {
     height: 860,
     minWidth: 1000,
     minHeight: 680,
-    backgroundColor: '#000000',
+    backgroundColor: '#14090d',
     title: 'Stick Labs',
     autoHideMenuBar: true,
     webPreferences: {

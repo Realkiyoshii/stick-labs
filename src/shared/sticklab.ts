@@ -37,7 +37,7 @@ export function bitsToWireRaw(bits: number): number {
 }
 
 /** Beyond-silicon quick picks — experimental, firmware will clamp/ignore. */
-export const EXTENDED_BITS: ReadonlyArray<number> = [13, 14, 16, 20, 24]
+export const EXTENDED_BITS: ReadonlyArray<number> = [13, 14, 16]
 
 export interface RawResolutionInfo {
   wire: number

@@ -49,6 +49,20 @@ interface LabApi {
   ping(count: number): Promise<PingResult>
   openExternal(url: string): Promise<boolean>
   version(): Promise<string>
+  steamInfo(): Promise<{ steamPath: string | null; userId: string | null; apexInstalled: boolean; apexAppId: number; steamRunning: boolean }>
+  steamExport(
+    left: { begin: number; end: number },
+    right: { begin: number; end: number },
+    mouseRate?: number | null,
+    curveExp?: number | null
+  ): Promise<{ game: string; appId: number; files: string[]; backedUp: string[]; mapped: string[]; notTransferred: string[] }>
+  steamGames(): Promise<Array<{ appId: number; name: string }>>
+  steamExportAll(
+    left: { begin: number; end: number },
+    right: { begin: number; end: number },
+    mouseRate?: number | null,
+    curveExp?: number | null
+  ): Promise<{ games: Array<{ appId: number; name: string }>; result: { games: Array<{ appId: number; name: string; ok: boolean; detail: string }> } }>
   on(channel: string, fn: (payload: never) => void): () => void
 }
 

@@ -101,7 +101,7 @@ for (const gear of [0, 1, 2, 3, 4, 5]) {
 
 // Extended bit picks: implied raw wires for past-silicon depths.
 {
-  const cases: Array<[number, number]> = [[13, 255], [14, 254], [16, 252], [20, 248], [24, 244]]
+  const cases: Array<[number, number]> = [[13, 255], [14, 254], [16, 252]]
   for (const [bits, wire] of cases) {
     check(`${bits}-bit implies wire ${wire}`, bitsToWireRaw(bits) === wire)
   }

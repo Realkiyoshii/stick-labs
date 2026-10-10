@@ -1,21 +1,21 @@
 /* ---------------------------------------------------------------------------
-   Stick Labs — black AMOLED theme
+   Stick Labs — Firebird-style wine theme
    --------------------------------------------------------------------------- */
 
 :root {
-  --bg: #000000;
-  --bg-1: #0a0a0c;
-  --bg-2: #101013;
-  --bg-3: #17171b;
-  --line: #1e1e23;
-  --line-2: #2c2c32;
+  --bg: #14090d;
+  --bg-1: #1e1015;
+  --bg-2: #2a151c;
+  --bg-3: #361b24;
+  --line: #40222c;
+  --line-2: #552c38;
 
-  --text: #f5f5f7;
-  --text-2: #a1a1a6;
-  --text-3: #6e6e73;
+  --text: #f7ecef;
+  --text-2: #c9a3ad;
+  --text-3: #8f6470;
 
-  --accent: #4f9dff;
-  --accent-2: #7db8ff;
+  --accent: #f43f52;
+  --accent-2: #ff8fa0;
   --good: #3ecf8e;
   --warn: #f5b544;
   --bad: #ff6b6b;
@@ -836,7 +836,7 @@ canvas.plot {
   color: var(--text-3);
 }
 
-/* --- AMOLED clean pass: pure black, no glows -------------------------------- */
+/* --- Firebird clean pass: wine black, red accents, no glows ------------------ */
 
 body,
 .app,
@@ -844,15 +844,25 @@ body,
 .content,
 .sidebar,
 .topbar {
-  background: #000;
+  background: #14090d;
 }
 
 .card,
 .msg,
 .log,
 .plot {
-  background: #0a0a0c;
+  background: #1e1015;
+  border-color: #40222c;
   box-shadow: none;
+}
+
+.card > h3 {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 12.5px;
+  color: var(--text);
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
 }
 
 .btn:disabled {

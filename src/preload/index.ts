@@ -24,6 +24,13 @@ const api = {
   calibration: (state: number) => call<boolean>('device:calibration', state),
   openExternal: (url: string) => call<boolean>('system:openExternal', url),
   version: () => call<string>('system:version'),
+  steamInfo: () =>
+    call<{ steamPath: string | null; userId: string | null; apexInstalled: boolean; apexAppId: number; steamRunning: boolean }>('steam:info'),
+  steamExport: (left: { begin: number; end: number }, right: { begin: number; end: number }, mouseRate?: number | null, curveExp?: number | null) =>
+    call<{ game: string; appId: number; files: string[]; backedUp: string[]; mapped: string[]; notTransferred: string[] }>('steam:export', left, right, mouseRate, curveExp),
+  steamGames: () => call<Array<{ appId: number; name: string }>>('steam:games'),
+  steamExportAll: (left: { begin: number; end: number }, right: { begin: number; end: number }, mouseRate?: number | null, curveExp?: number | null) =>
+    call<{ games: Array<{ appId: number; name: string }>; result: { games: Array<{ appId: number; name: string; ok: boolean; detail: string }> } }>('steam:exportAll', left, right, mouseRate, curveExp),
   ping: (count: number) =>
     call<{ count: number; samples: number[]; min: number; max: number; median: number; mean: number }>('diag:ping', count),
   on: (channel: string, fn: (payload: any) => void): (() => void) => {
