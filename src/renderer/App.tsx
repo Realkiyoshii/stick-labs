@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { parseProfile, serializeProfile, fun, stick, LINEAR_CURVE, looksLikeCEProfile, Packet } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS } from '@shared/protocol'
+import { CenterOffsets } from './CenterOffsets'
 import { identifyModel, MODELS, type ControllerModel } from '@shared/models'
 import {
   describeRawResolution,
@@ -1445,7 +1446,7 @@ export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
-  const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam' | 'calibrate' | 'marius'>('sticks')
+  const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam' | 'calibrate' | 'center' | 'marius'>('sticks')
   // Virtual sticks for pad-less Steam shaping: real packets, never written
   // to hardware — the Steam exporter reads these when no profile is loaded.
   const [vSticks] = useState(() => {
@@ -1815,6 +1816,9 @@ export default function App(): JSX.Element {
             <button type="button" className={`nav-item${tab === 'device' ? ' active' : ''}`} onClick={() => setTab('device')}>
               Device
             </button>
+            <button type="button" className={`nav-item${tab === 'center' ? ' active' : ''}`} onClick={() => setTab('center')}>
+              Center offsets
+            </button>
             <button type="button" className={`nav-item${tab === 'calibrate' ? ' active' : ''}`} onClick={() => setTab('calibrate')}>
               Calibrate
             </button>
@@ -2080,7 +2084,7 @@ export default function App(): JSX.Element {
           )}
           {connected && profile && pkt && dz && fd && (
             <>
-              <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+              {tab !== 'center' && <div className="row" style={{ gap: 8, marginBottom: 12 }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`btn${i === which ? ' primary' : ' ghost'}`} onClick={() => setWhich(i)}>
                     {n} stick
@@ -2088,7 +2092,7 @@ export default function App(): JSX.Element {
                 ))}
                 <div style={{ flex: 1 }} />
                 <span className="pill">{resBits}-bit · {bitsToLevels(resBits).toLocaleString()} levels</span>
-              </div>
+              </div>}
               {tab === 'sticks' && (
               <div className="two" style={{ alignItems: 'start' }}>
                 <div className="stack" style={{ gap: 16 }}>
@@ -2557,6 +2561,10 @@ export default function App(): JSX.Element {
               </div>
               )}
             </>
+          )}
+          {tab === 'center' && connected && (
+            model?.id === 'G7ProCE' ? <CenterOffsets busy={busy} /> :
+              <div className="msg"><h3>Connect a G7 Pro 8K</h3><p>Center-offset commands are currently verified against the G7 Pro 8K software path only.</p></div>
           )}
           {tab === 'profiles' && (
             <ProfilesPanel connected={connected} activeSlot={info?.currentProfile ?? null} locked={locked} modelId={modelId} modelLen={modelLen} dumpLength={model?.dumpLength ?? 0} modelName={model?.marketingName ?? null} />

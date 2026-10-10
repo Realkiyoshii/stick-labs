@@ -20,6 +20,7 @@ const entry =
   tests.length > 0
     ? tests
     : [
+        'tests/center.ts',
         'tests/roundtrip.ts',
         'tests/commands.ts',
         'tests/sticks.ts',

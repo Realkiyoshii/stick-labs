@@ -22,6 +22,7 @@ const api = {
     call<{ verified: boolean; rolledBack: boolean }>('profile:write', profile, dataB64, length),
   switchProfile: (profile: number) => call<boolean>('profile:switch', profile),
   currentProfile: () => call<number>('profile:current'),
+  adjustCenter: (side: number, direction: import('../shared/center').CenterDirection) => call<boolean>('device:adjustCenter', side, direction),
   calibration: (state: number) => call<boolean>('device:calibration', state),
   openExternal: (url: string) => call<boolean>('system:openExternal', url),
   version: () => call<string>('system:version'),
