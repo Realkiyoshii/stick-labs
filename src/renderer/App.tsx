@@ -17,6 +17,7 @@ import {
 } from '@shared/sticklab'
 import { fitCurveExponent } from '@shared/steamcfg'
 import type { MariusConfig, MariusIdentity } from '@shared/marius'
+import { mariusDisplayName } from '@shared/marius'
 
 /** Stick deadzone packet → whole percent for the Steam exporter. */
 function deadzonePct(pkt: import('@shared/profile').Packet): { begin: number; end: number; anti: number } {
@@ -1037,7 +1038,7 @@ function MariusPanel(): JSX.Element {
       setSession(s)
       setConfig(null)
       setRaw(null)
-      setMsg(`Connected — ${s.identity.name || 'unknown board'} (${s.identity.family.line}/${s.identity.family.variant}).`)
+      setMsg(`Connected — ${mariusDisplayName(s.identity)}.`)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -1120,7 +1121,8 @@ function MariusPanel(): JSX.Element {
       </div>
       {id && session && (
         <div className="card">
-          <h3>{id.name || 'Marius board'}</h3>
+          <h3>{mariusDisplayName(id)}</h3>
+          <div className="mono" style={{ fontSize: 11, marginBottom: 4 }}>firmware string: {id.name || '?'}</div>
           <div className="row wrap" style={{ gap: 6, margin: '8px 0' }}>
             <span className="pill good">{id.family.line} / {id.family.variant}</span>
             <span className="pill">{id.family.bits}-bit raw</span>

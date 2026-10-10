@@ -85,6 +85,19 @@ export function isMariusFamily(f: MariusFamily): boolean {
   return f.line !== 'unknown' && f.variant !== 'unknown'
 }
 
+/**
+ * Marketing-style display name, mirroring how GameSir pads show
+ * "G7 Pro 8K": "Marius MH4 Digital", falling back to the firmware
+ * device string when the family byte is unknown.
+ */
+export function mariusDisplayName(identity: MariusIdentity): string {
+  if (identity.family.line !== 'unknown' && identity.family.variant !== 'unknown') {
+    const variant = identity.family.variant === 'analog' ? 'Analog' : 'Digital'
+    return `Marius ${identity.family.line} ${variant}`
+  }
+  return identity.name || 'Marius board'
+}
+
 export interface MariusIdentity {
   versionMajor: number
   versionMinor: number

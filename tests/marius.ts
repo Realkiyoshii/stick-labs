@@ -10,6 +10,7 @@ import {
   decodeMariusRaw,
   isMariusFamily,
   mariusChunkHeader,
+  mariusDisplayName,
   mariusHidFrame,
   mariusPollHz,
   parseMariusAppInfo,
@@ -166,6 +167,11 @@ check('ref identity name', refIdent.name === 'MH4-D v1.36')
 check('ref identity MH4/digital', refIdent.family.line === 'MH4' && refIdent.family.variant === 'digital')
 check('ref identity 14-bit + hwRev 1', refIdent.family.bits === 14 && refIdent.hwRev === 1)
 check('ref identity build date', refIdent.buildDate === 'May 30 2026')
+check('display name MH4 Digital', mariusDisplayName(refIdent) === 'Marius MH4 Digital')
+check(
+  'display name falls back to firmware string',
+  mariusDisplayName(parseMariusAppInfo(new Uint8Array(64), '')) === 'Marius board'
+)
 
 const refCfg = new Uint8Array(256)
 const w16 = (off: number, v: number): void => {
