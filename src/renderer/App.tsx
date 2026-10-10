@@ -1032,6 +1032,12 @@ export default function App(): JSX.Element {
   const [measuring, setMeasuring] = useState<{ left: number; suggestion: { dev: number; pct10: number } | null } | null>(null)
   const wanderRef = useRef(0)
   const modelLenRef = useRef(PROFILE_LENGTH)
+  // The device-event effect below runs once, so its closures go stale — these
+  // refs keep the reconnect handler pointed at the live slot + dirty flag.
+  const slotRef = useRef(slot)
+  slotRef.current = slot
+  const dirtyRef = useRef(false)
+  dirtyRef.current = dirty
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [showSafety, setShowSafety] = useState(() => {
     try {
@@ -1062,8 +1068,14 @@ export default function App(): JSX.Element {
       const info = incoming as unknown as DeviceInfo
       setConnected(true)
       setInfo(info)
-      setMsg('Reconnected — profile reloaded.')
-      void loadSlot(slot)
+      if (dirtyRef.current) {
+        // A reboot mid-edit must not silently throw away the working copy:
+        // keep it and let the user choose when to re-read the pad.
+        setMsg('Reconnected — your unsaved edits were kept. Re-select the slot to reload the pad bytes.')
+      } else {
+        setMsg('Reconnected — profile reloaded.')
+        void loadSlot(slotRef.current)
+      }
     })
     return () => {
       offSample()
