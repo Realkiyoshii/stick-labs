@@ -32,6 +32,8 @@ export interface LiveSample {
   ry: number
   lt: number
   rt: number
+  calTarget: number
+  calMask: number
   battery: number
   live: boolean
   timestamp: number

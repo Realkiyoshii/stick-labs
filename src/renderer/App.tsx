@@ -621,6 +621,112 @@ function LockedDump({ modelId, modelName, defaultLength }: { modelId: string; mo
   )
 }
 
+function CalibrationPanel(): JSX.Element {
+  const [live, setLive] = useState<LiveSample | null>(null)
+  const liveRef = useRef<LiveSample | null>(null)
+  const [before, setBefore] = useState<number[] | null>(null)
+  const [after, setAfter] = useState<number[] | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const off = api().on('input:sample', (s) => {
+      const v = s as unknown as LiveSample
+      liveRef.current = v
+      setLive(v)
+    })
+    return off
+  }, [])
+
+  const rest = live ? [live.lx - 128, live.ly - 128, live.rx - 128, live.ry - 128] : null
+  const maxDev = rest ? Math.max(...rest.map((v) => Math.abs(v))) : 0
+  const centered = maxDev <= 4
+  const inCal = (live?.calTarget ?? 0) !== 0
+
+  async function enter(): Promise<void> {
+    setErr(null)
+    setAfter(null)
+    if (live) setBefore([live.lx, live.ly, live.rx, live.ry].map((v) => v - 128))
+    setBusy(true)
+    try {
+      await api().calibration(0)
+      setNote('Calibration open — hands off, sticks centered. Commit writes this rest position as the new centre.')
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function commit(): Promise<void> {
+    setErr(null)
+    if (!centered) {
+      setErr(`Sticks are ${maxDev} steps off centre — re-centre them first. Commit is blocked to protect your calibration.`)
+      return
+    }
+    if (!window.confirm('Commit calibration? The current rest position becomes the new centre. This cannot be undone from a file.')) return
+    setBusy(true)
+    try {
+      await api().calibration(1)
+      setNote('Committed — sampling the new rest position…')
+      window.setTimeout(() => {
+        const v = liveRef.current
+        if (v) setAfter([v.lx, v.ly, v.rx, v.ry].map((x) => x - 128))
+        setNote('Committed. Compare before/after below — both should sit near 0.')
+      }, 1500)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function cancel(): Promise<void> {
+    setErr(null)
+    try {
+      await api().calibration(2)
+      setNote('Calibration cancelled — nothing was written.')
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const names = ['LX', 'LY', 'RX', 'RY']
+  const verdict = !rest ? null : maxDev <= 2 ? 'Centered' : maxDev <= 6 ? 'Mild drift — deadzone covers it' : 'Drifting — calibrate'
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>Calibration bench</h3>
+      <div className="hint">DualShock-style centering, verified live: the pad reports its own calibration state, and commit stays blocked until the sticks actually rest at centre.</div>
+      <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
+        <span className={`pill${inCal ? ' warn' : ''}`}>{inCal ? `calibrating (target ${live?.calTarget})` : 'idle'}</span>
+        {rest && <span className={`pill${maxDev <= 2 ? ' good' : maxDev <= 6 ? ' warn' : ' bad'}`}>{verdict} · ±{maxDev}</span>}
+        <div style={{ flex: 1 }} />
+        <button className="btn sm" disabled={busy || inCal} onClick={() => void enter()}>1 · Open</button>
+        <button className="btn sm primary" disabled={busy || !inCal} onClick={() => void commit()}>2 · Commit</button>
+        <button className="btn sm ghost" disabled={busy || !inCal} onClick={() => void cancel()}>Cancel</button>
+      </div>
+      {note && <div className="note" style={{ marginBottom: 8 }}>{note}</div>}
+      {err && <div className="note bad" style={{ marginBottom: 8 }}>{err}</div>}
+      <table className="tbl">
+        <thead><tr><th>Axis</th><th>Live</th><th>Before</th><th>After</th></tr></thead>
+        <tbody>
+          {names.map((n, i) => (
+            <tr key={n}>
+              <td className="mono">{n}</td>
+              <td className="mono">{rest ? (rest[i] > 0 ? `+${rest[i]}` : `${rest[i]}`) : '—'}</td>
+              <td className="mono">{before ? (before[i] > 0 ? `+${before[i]}` : `${before[i]}`) : '—'}</td>
+              <td className="mono">{after ? (after[i] > 0 ? `+${after[i]}` : `${after[i]}`) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="note" style={{ marginTop: 8 }}>Leave the pad untouched on a table while open. Values are steps off centre (128); ±2 is perfect.</div>
+    </div>
+  )
+}
+
 function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpLength, modelName }: { connected: boolean; activeSlot: number | null; locked: boolean; modelId: string; modelLen: number; dumpLength: number; modelName: string | null }): JSX.Element {
   const [entries, setEntries] = useState<SlotEntry[]>([1, 2, 3, 4].map((index) => ({ index, name: null, bytes: null, loading: false, error: null })))
   const [busy, setBusy] = useState(false)
@@ -902,7 +1008,7 @@ export default function App(): JSX.Element {
   const [loadId, setLoadId] = useState(0)
   const [bitCustom, setBitCustom] = useState('')
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
-  const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam'>('sticks')
+  const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam' | 'calibrate'>('sticks')
   // Virtual sticks for pad-less Steam shaping: real packets, never written
   // to hardware — the Steam exporter reads these when no profile is loaded.
   const [vSticks] = useState(() => {
@@ -1254,6 +1360,9 @@ export default function App(): JSX.Element {
             </button>
             <button type="button" className={`nav-item${tab === 'device' ? ' active' : ''}`} onClick={() => setTab('device')}>
               Device
+            </button>
+            <button type="button" className={`nav-item${tab === 'calibrate' ? ' active' : ''}`} onClick={() => setTab('calibrate')}>
+              Calibrate
             </button>
           </div>
           <div className="nav-group">
@@ -2005,6 +2114,13 @@ export default function App(): JSX.Element {
           )}
           {tab === 'profiles' && (
             <ProfilesPanel connected={connected} activeSlot={info?.currentProfile ?? null} locked={locked} modelId={modelId} modelLen={modelLen} dumpLength={model?.dumpLength ?? 0} modelName={model?.marketingName ?? null} />
+          )}
+          {tab === 'calibrate' && (
+            connected && model?.support === 'full' ? (
+              <CalibrationPanel />
+            ) : (
+              <div className="msg"><h3>Connect a supported controller</h3><p>Calibration needs a live G7 Pro 8K, G7 Pro or Tarantula 8K.</p></div>
+            )
           )}
           {tab === 'lab' && (
           <AnalyticsPanel

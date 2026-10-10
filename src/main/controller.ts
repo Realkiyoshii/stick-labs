@@ -56,6 +56,9 @@ export interface LiveInput {
   ry: number
   lt: number
   rt: number
+  /** Calibration target (byte 31) and part mask (byte 32) — 0/0 when idle. */
+  calTarget: number
+  calMask: number
   /** raw[5..], so `buttons[0]` is raw[5]. */
   buttons: Uint8Array
   battery: number
@@ -538,6 +541,8 @@ export function decodeInput(raw: Uint8Array): LiveInput | null {
     ry,
     lt: raw[8],
     rt: raw[9],
+    calTarget: raw[31],
+    calMask: raw[32],
     buttons: raw.slice(5),
     battery,
     charging: (raw[35] & 0x01) !== 0,
