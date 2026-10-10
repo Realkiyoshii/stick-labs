@@ -1618,7 +1618,12 @@ export default function App(): JSX.Element {
         }
       }
     } catch (e) {
-      setErr((e as Error).message)
+      const raw = (e as Error).message
+      setErr(
+        raw.includes('timed out waiting for response')
+          ? `${raw} — the pad opened but never answered. Use wired USB or the 2.4 GHz dongle (Bluetooth exposes no config channel to any app), update firmware in GameSir Connect first if this is a first connect, then close GameSir Connect (it holds the handle) and retry. If it persists, try another listed interface.`
+          : raw
+      )
     }
   }
 
