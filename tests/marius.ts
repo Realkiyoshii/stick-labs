@@ -151,6 +151,67 @@ check('raw 12-bit decode', raw12.x === 2048 && raw12.y === 2047)
 const raw14 = decodeMariusRaw(new Uint8Array([0x3f, 0xff, 0x00, 0x00]), 14)
 check('raw 14-bit mask 0x3F', raw14.x === 16383 && raw14.y === 0)
 
+// --- reference vectors: fake-transport.js #buildAppInfo / #buildConfig ----
+// (mh4-d-ds4 profile: 'MH4-D v1.36', family 0x12, hwRev 1, 'May 30 2026')
+const refInfo = new Uint8Array(64)
+refInfo[4] = 36
+refInfo[5] = 1
+refInfo.set(new TextEncoder().encode('MH4-D v1.36'), 6)
+refInfo[38] = 0x12
+refInfo[39] = 1
+refInfo.set(new TextEncoder().encode('May 30 2026'), 40)
+const refIdent = parseMariusAppInfo(refInfo, 'uid-here')
+check('ref identity version 1.36', refIdent.versionMajor === 1 && refIdent.versionMinor === 36)
+check('ref identity name', refIdent.name === 'MH4-D v1.36')
+check('ref identity MH4/digital', refIdent.family.line === 'MH4' && refIdent.family.variant === 'digital')
+check('ref identity 14-bit + hwRev 1', refIdent.family.bits === 14 && refIdent.hwRev === 1)
+check('ref identity build date', refIdent.buildDate === 'May 30 2026')
+
+const refCfg = new Uint8Array(256)
+const w16 = (off: number, v: number): void => {
+  refCfg[off] = v & 0xff
+  refCfg[off + 1] = (v >> 8) & 0xff
+}
+refCfg[0] = 0
+refCfg[1] = 2
+refCfg[2] = 0xc0
+w16(3, 2048)
+w16(5, 2048)
+w16(7, 2048)
+w16(9, 2048)
+w16(11, 300)
+w16(13, 3800)
+w16(15, 280)
+w16(17, 3790)
+w16(19, 310)
+w16(21, 3810)
+w16(23, 290)
+w16(25, 3800)
+w16(31, 600)
+w16(33, 2000)
+w16(35, 600)
+w16(37, 2000)
+refCfg[39] = 50
+refCfg.fill(0xff, 40, 46)
+refCfg[50] = 2
+refCfg[51] = 255
+refCfg[52] = 0
+refCfg[53] = 255
+refCfg[54] = 255
+refCfg[55] = 255
+refCfg[56] = 0
+refCfg[57] = 255
+w16(58, 3000)
+const ref = parseMariusConfig(refCfg)
+check('ref config valid (0xC0 canonical)', ref.valid)
+check('ref centers', ref.center.lx === 2048 && ref.center.ry === 2048)
+check('ref ranges', ref.rangeLeft.xMin === 300 && ref.rangeLeft.xMax === 3800 && ref.rangeRight.yMin === 290 && ref.rangeRight.yMax === 3800)
+check('ref triggers 600/2000 + hair 50', ref.triggers.l2Start === 600 && ref.triggers.l2End === 2000 && ref.hairPct === 50)
+check('ref buttonMap erased (0xFF)', ref.buttonMap.every((b) => b === 0xff))
+check('ref LED mode 2 period 3000', ref.led.mode === 2 && ref.led.period === 3000)
+check('ref full 12-bit (byte60=0)', ref.leftEffectiveBits === 0)
+check('ref no curves/blob ext on fresh', !ref.curvesPresent && ref.extDeadzone === null && !ref.rightEffectiveBitsPresent)
+
 if (failures > 0) {
   console.error(`${failures} FAILURES`)
   process.exit(1)
