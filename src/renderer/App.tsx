@@ -16,6 +16,7 @@ import {
   isOuterUnlimited
 } from '@shared/sticklab'
 import { fitCurveExponent } from '@shared/steamcfg'
+import type { MariusConfig, MariusIdentity } from '@shared/marius'
 
 /** Stick deadzone packet → whole percent for the Steam exporter. */
 function deadzonePct(pkt: import('@shared/profile').Packet): { begin: number; end: number; anti: number } {
@@ -1004,6 +1005,164 @@ function CalibrationPanel(): JSX.Element {
   )
 }
 
+function MariusPanel(): JSX.Element {
+  const [cands, setCands] = useState<Array<{ path: string; productId: number; product: string | undefined; manufacturer: string | undefined }>>([])
+  const [session, setSession] = useState<{ identity: MariusIdentity; bInterval: number; pollHz: number } | null>(null)
+  const [config, setConfig] = useState<MariusConfig | null>(null)
+  const [raw, setRaw] = useState<{ left: { x: number; y: number }; right: { x: number; y: number } } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function scan(): Promise<void> {
+    setErr(null)
+    setBusy(true)
+    try {
+      const list = await api().mariusDiscover()
+      setCands(list)
+      setMsg(`Found ${list.length} 0x054C:0x05C4 interface(s). This ID is shared with real DualShock 4 — the family gate applies on connect.`)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function connect(path: string): Promise<void> {
+    setErr(null)
+    setMsg(null)
+    setBusy(true)
+    try {
+      const s = await api().mariusConnect(path)
+      setSession(s)
+      setConfig(null)
+      setRaw(null)
+      setMsg(`Connected — ${s.identity.name || 'unknown board'} (${s.identity.family.line}/${s.identity.family.variant}).`)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function read(): Promise<void> {
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await api().mariusReadConfig()
+      setConfig(res.parsed)
+      setMsg('Config read (256 B). Display only — nothing was written.')
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sample(): Promise<void> {
+    setErr(null)
+    setBusy(true)
+    try {
+      setRaw(await api().mariusReadRaw())
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function disc(): Promise<void> {
+    setErr(null)
+    try {
+      await api().mariusDisconnect()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setSession(null)
+      setConfig(null)
+      setRaw(null)
+    }
+  }
+
+  const id = session?.identity ?? null
+  const fullScale = id ? 2 ** id.family.bits : 4096
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="card" style={{ borderColor: 'var(--warn)' }}>
+        <h3>Marius board — read-only preview</h3>
+        <div className="hint">Reverse-engineered from the public setup web app — <strong>unverified against hardware</strong>. This build has no write path: connect, identity and config reads only. Setup mode: hold PS while plugging USB.</div>
+        <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+          <button className="btn sm" disabled={busy} onClick={() => void scan()}>Scan USB</button>
+          {session && (
+            <>
+              <button className="btn sm" disabled={busy} onClick={() => void read()}>Read config</button>
+              <button className="btn sm" disabled={busy} onClick={() => void sample()}>Sample sticks</button>
+              <button className="btn sm ghost" disabled={busy} onClick={() => void disc()}>Disconnect</button>
+            </>
+          )}
+        </div>
+        {msg && <div className="note" style={{ marginTop: 8 }}>{msg}</div>}
+        {err && <div className="note bad" style={{ marginTop: 8 }}>{err}</div>}
+        {!session && cands.length > 0 && (
+          <table className="tbl" style={{ marginTop: 8 }}>
+            <thead><tr><th>Product</th><th>PID</th><th></th></tr></thead>
+            <tbody>
+              {cands.map((c) => (
+                <tr key={c.path}>
+                  <td>{c.product ?? '?'}</td>
+                  <td className="mono">0x{c.productId.toString(16)}</td>
+                  <td><button className="btn sm" disabled={busy} onClick={() => void connect(c.path)}>Connect</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {id && session && (
+        <div className="card">
+          <h3>{id.name || 'Marius board'}</h3>
+          <div className="row wrap" style={{ gap: 6, margin: '8px 0' }}>
+            <span className="pill good">{id.family.line} / {id.family.variant}</span>
+            <span className="pill">{id.family.bits}-bit raw</span>
+            <span className="pill">fw {id.versionMajor}.{id.versionMinor}</span>
+            <span className="pill">rev {id.hwRev}</span>
+            <span className="pill">{session.pollHz.toLocaleString()} Hz</span>
+          </div>
+          <div className="mono" style={{ fontSize: 11 }}>uid {id.uid} · build {id.buildDate || '?'}</div>
+        </div>
+      )}
+      {config && (
+        <div className="card">
+          <h3>Config — 256 B</h3>
+          <div className="row wrap" style={{ gap: 6, margin: '8px 0' }}>
+            <span className={`pill${config.valid ? ' good' : ' bad'}`}>{config.valid ? 'valid (v2 + marker)' : 'INVALID — do not trust'}</span>
+            {config.curvesPresent && <span className="pill">curves blob ({config.curvesLength} B)</span>}
+            {config.rightEffectiveBitsPresent && <span className="pill">per-stick bits</span>}
+          </div>
+          <table className="tbl">
+            <tbody>
+              <tr><td className="mono">center L/R</td><td className="mono">({config.center.lx}, {config.center.ly}) · ({config.center.rx}, {config.center.ry})</td></tr>
+              <tr><td className="mono">range L</td><td className="mono">x {config.rangeLeft.xMin}–{config.rangeLeft.xMax} · y {config.rangeLeft.yMin}–{config.rangeLeft.yMax}</td></tr>
+              <tr><td className="mono">range R</td><td className="mono">x {config.rangeRight.xMin}–{config.rangeRight.xMax} · y {config.rangeRight.yMin}–{config.rangeRight.yMax}</td></tr>
+              <tr><td className="mono">deadzone L/R</td><td className="mono">{config.deadzone.leftIn}%/{config.deadzone.leftOut}% · {config.deadzone.rightIn}%/{config.deadzone.rightOut}%</td></tr>
+              {config.extDeadzone && <tr><td className="mono">ext dz L/R</td><td className="mono">{config.extDeadzone.leftIn}%/{config.extDeadzone.leftOut}% · {config.extDeadzone.rightIn}%/{config.extDeadzone.rightOut}%</td></tr>}
+              <tr><td className="mono">triggers</td><td className="mono">L2 {config.triggers.l2Start}/{config.triggers.l2End} · R2 {config.triggers.r2Start}/{config.triggers.r2End} · hair {config.hairPct}%</td></tr>
+              <tr><td className="mono">out bits L/R</td><td className="mono">{config.leftEffectiveBits === 0 || config.leftEffectiveBits === 0xff ? 'full' : config.leftEffectiveBits} · {config.rightEffectiveBits === 0 || config.rightEffectiveBits === 0xff ? 'full' : config.rightEffectiveBits}</td></tr>
+              <tr><td className="mono">invert</td><td className="mono">LX{config.invert.lx ? '±' : ''} LY{config.invert.ly ? '±' : ''} RX{config.invert.rx ? '±' : ''} RY{config.invert.ry ? '±' : ''}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      {raw && (
+        <div className="card">
+          <h3>Raw sticks — full scale {fullScale.toLocaleString()}</h3>
+          <div className="mono">L ({raw.left.x}, {raw.left.y}) · R ({raw.right.x}, {raw.right.y})</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpLength, modelName }: { connected: boolean; activeSlot: number | null; locked: boolean; modelId: string; modelLen: number; dumpLength: number; modelName: string | null }): JSX.Element {
   const [entries, setEntries] = useState<SlotEntry[]>([1, 2, 3, 4].map((index) => ({ index, name: null, bytes: null, loading: false, error: null })))
   const [busy, setBusy] = useState(false)
@@ -1284,7 +1443,7 @@ export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
-  const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam' | 'calibrate'>('sticks')
+  const [tab, setTab] = useState<'sticks' | 'device' | 'profiles' | 'lab' | 'steam' | 'calibrate' | 'marius'>('sticks')
   // Virtual sticks for pad-less Steam shaping: real packets, never written
   // to hardware — the Steam exporter reads these when no profile is loaded.
   const [vSticks] = useState(() => {
@@ -1666,6 +1825,12 @@ export default function App(): JSX.Element {
             <h4>Export</h4>
             <button type="button" className={`nav-item${tab === 'steam' ? ' active' : ''}`} onClick={() => setTab('steam')}>
               Steam
+            </button>
+          </div>
+          <div className="nav-group">
+            <h4>Preview</h4>
+            <button type="button" className={`nav-item${tab === 'marius' ? ' active' : ''}`} onClick={() => setTab('marius')}>
+              Marius
             </button>
           </div>
         </nav>
@@ -2395,6 +2560,9 @@ export default function App(): JSX.Element {
             ) : (
               <div className="msg"><h3>Connect a supported controller</h3><p>Calibration needs a live G7 Pro 8K, G7 Pro or Tarantula 8K.</p></div>
             )
+          )}
+          {tab === 'marius' && (
+            <MariusPanel />
           )}
           {tab === 'lab' && (
           <AnalyticsPanel
