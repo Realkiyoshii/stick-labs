@@ -1965,6 +1965,16 @@ export default function App(): JSX.Element {
                           {o.bits}-bit
                         </button>
                       ))}
+                      {EXTENDED_BITS.map((bits) => (
+                        <button
+                          key={bits}
+                          className={`btn sm ghost${resWire === bitsToWireRaw(bits) ? ' primary' : ''}`}
+                          title="Beyond silicon — writes the implied raw wire, expect clamp/ignore"
+                          onClick={() => edit(() => fun.extend.setStickResolution(fd, bitsToWireRaw(bits)))}
+                        >
+                          {bits}-bit*
+                        </button>
+                      ))}
                     </div>
                     <div className="row" style={{ gap: 8, marginTop: 8 }}>
                       <input
