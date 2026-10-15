@@ -235,7 +235,7 @@ const STR: Dict = {
   'sticks.outerOff': { en: 'Off — mild +10 boundary parked', zh: '关闭——温和 +10 边界待用', ja: 'OFF — +10境界待機', ru: 'Выкл — мягкая граница +10 отложена' },
   'sticks.suggest': { en: 'Max wander {dev} steps off centre.', zh: '最大漂移 {dev} 步。', ja: '最大振れ {dev} ステップ。', ru: 'Макс. уход {dev} шагов от центра.' },
   'sticks.setStart': { en: 'Set Start {pct}%', zh: '设起点 {pct}%', ja: '開始を{pct}%に', ru: 'Поставить начало {pct}%' },
-  'sticks.shapeRound': { en: 'Round diagonals', zh: '圆形斜向', ja: 'ラウンド対角', ru: 'Круглые диагонали' },
+  'sticks.shapeRound': { en: 'Circle', zh: '圆形', ja: 'サークル', ru: 'Круг' },
   'sticks.shapeSquare': { en: 'Square gate', zh: '方形档位', ja: 'スクエアゲート', ru: 'Квадратный ограничитель' },
   'sticks.shapeRaw': { en: 'Pure raw 1:1', zh: '纯原生 1:1', ja: 'ピュアRAW 1:1', ru: 'Чистый raw 1:1' },
   'sticks.resetHint': { en: 'Returns every byte this app can write to stock neutral. Names, triggers, buttons and macros are untouched. Then Write to apply.', zh: '将本软件可写的所有字节恢复出厂。名称、扳机、按键和宏不受影响，然后写入以应用。', ja: '書き込み可能な全バイトを初期化。名前・トリガー・ボタン・マクロは保持。書き込んで適用。', ru: 'Возвращает каждый байт, что пишет приложение, к заводской нейтрали. Имена, триггеры, кнопки и макросы не тронуты. Затем запишите для применения.' },
