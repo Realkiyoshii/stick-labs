@@ -1650,6 +1650,39 @@ export default function App(): JSX.Element {
                       <Hint>{t('device.rateNote')}</Hint>
                     </div>
                   </div>
+                  <div className="card">
+                    <h3>RC filter — {(which === 0 ? t('cal.left') : t('cal.right'))}</h3>
+                    <Hint>Stick anti-jitter per stick, −10…+10, 0 = off. Stock and Connect-kept at 0 (Connect resets it). Higher steadies micro-jitter and adds a touch of lag. Tournament-legal smoothing — no macros, no turbo.</Hint>
+                    <div className="stack" style={{ gap: 12, marginTop: 8 }}>
+                      <Slider
+                        label="RC level"
+                        value={which === 0 ? fun.extend.lsRcLevel(fd) : fun.extend.rsRcLevel(fd)}
+                        min={-10}
+                        max={10}
+                        step={1}
+                        unit=""
+                        onChange={(v) => edit(() => {
+                          const level = Math.max(-10, Math.min(10, Math.round(v)))
+                          if (which === 0) fun.extend.setLsRcLevel(fd, level)
+                          else fun.extend.setRsRcLevel(fd, level)
+                        })}
+                        format={(v) => (v === 0 ? 'off' : `${v > 0 ? '+' : ''}${Math.round(v)}`)}
+                      />
+                      <div className="row wrap" style={{ gap: 8 }}>
+                        <button
+                          className={`choice-btn${(which === 0 ? fun.extend.lsRcLevel(fd) : fun.extend.rsRcLevel(fd)) === 0 ? ' active' : ''}`}
+                          title="Wire 11 — stock, Connect-kept"
+                          onClick={() => edit(() => {
+                            if (which === 0) fun.extend.setLsRcLevel(fd, 0)
+                            else fun.extend.setRsRcLevel(fd, 0)
+                          })}
+                        >
+                          <span className="choice-label">Off (0)</span>
+                        </button>
+                        <span className="mono">stored wire: {which === 0 ? fun.extend.lsAntiJitter(fd) : fun.extend.rsAntiJitter(fd)}</span>
+                      </div>
+                    </div>
+                  </div>
 
                 </div>
               </div>
