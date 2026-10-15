@@ -33,7 +33,7 @@
   },
   "build": {
     "appId": "com.realkiyoshi.sticklabs",
-    "productName": "Stick Labs Zamilitox",
+    "productName": "Stick Labs",
     "asar": false,
     "win": {
       "icon": "build/icon.ico",
