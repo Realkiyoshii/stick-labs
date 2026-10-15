@@ -33,7 +33,7 @@
   },
   "build": {
     "appId": "com.realkiyoshi.sticklabs",
-    "productName": "Stick Labs",
+    "productName": "Stick Labs Zamilitox",
     "asar": false,
     "win": {
       "icon": "build/icon.ico",
@@ -52,12 +52,12 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Stick-Labs-setup-${version}.${ext}",
+      "artifactName": "Stick-Labs-Zamilitox-setup-${version}.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
     },
     "portable": {
-      "artifactName": "Stick-Labs-portable-${version}.${ext}"
+      "artifactName": "Stick-Labs-Zamilitox-${version}.${ext}"
     },
     "publish": [
       {
