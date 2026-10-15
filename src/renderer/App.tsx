@@ -254,6 +254,11 @@ function CurvePlot({ points, onChange, overlay, smooth }: { points: Array<{ x: n
  */
 export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: number; y: number }> }> = {
   linear: { label: 'Linear', hint: '1:1 raw', pts: [...LINEAR_CURVE] },
+  zamilitox: {
+    label: 'My Zamilitox',
+    hint: 'shared S-curve: hot start, settled edge',
+    pts: [{ x: 0, y: 0 }, { x: 26, y: 48 }, { x: 71, y: 89 }, { x: 128, y: 128 }, { x: 184, y: 166 }, { x: 230, y: 204 }, { x: 255, y: 255 }]
+  },
   dynamic: {
     label: 'Dynamic (CoD)',
     hint: 'digitized from CoD chart: hot start, settled mid',

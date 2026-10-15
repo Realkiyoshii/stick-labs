@@ -13,6 +13,19 @@ function check(name: string, cond: boolean): void {
 
 const dyn = AIM_CURVES.dynamic
 check('dynamic exists', !!dyn && dyn.label === 'Dynamic (CoD)')
+const zam = AIM_CURVES.zamilitox
+check('zamilitox exists', !!zam && zam.label === 'My Zamilitox')
+check(
+  'zamilitox 7 points, ordered, pinned ends',
+  zam.pts.length === 7 &&
+    zam.pts[0].x === 0 && zam.pts[0].y === 0 &&
+    zam.pts[6].x === 255 && zam.pts[6].y === 255 &&
+    zam.pts.every((p, i) => p.x >= 0 && p.x <= 255 && p.y >= 0 && p.y <= 255 && (i === 0 || p.x > zam.pts[i - 1].x))
+)
+check(
+  'zamilitox hot-start S shape',
+  zam.pts[1].y > zam.pts[1].x && zam.pts[3].y === zam.pts[3].x && zam.pts[4].y < zam.pts[4].x
+)
 const pts = dyn.pts
 // byte-safe: 5 pts, x strictly ascending in 0..255, y in 0..255, endpoints pinned
 check('dynamic 5 points', pts.length === 5)
