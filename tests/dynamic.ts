@@ -14,7 +14,7 @@ function check(name: string, cond: boolean): void {
 const dyn = AIM_CURVES.dynamic
 check('dynamic exists', !!dyn && dyn.label === 'Dynamic (CoD)')
 const zam = AIM_CURVES.zamilitox
-check('zamilitox exists', !!zam && zam.label === 'My Zamilitox')
+check('zamilitox exists', !!zam && zam.label === 'Zamilitox')
 check(
   'zamilitox 7 points, ordered, pinned ends',
   zam.pts.length === 7 &&
