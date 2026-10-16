@@ -7,6 +7,7 @@ import {
   describeRawResolution,
   bitsToLevels,
   bitsToWireRaw,
+  EXTENDED_BITS,
   resampleCurve,
   addDesignPoint,
   DESIGN_MIN_POINTS,
@@ -1601,6 +1602,26 @@ export default function App(): JSX.Element {
                         </button>
                       ))}
                     </div>
+                    {/* Zamilitox build only: beyond-silicon picks. The firmware
+                        stores any byte here, but its behaviour stays clamped to
+                        the 12-bit step (measured live on the T3CE, docs/tarantula-8k.md),
+                        so these experiment with the raw field, not extra resolution. */}
+                    <div className="choice" style={{ margin: '0 0 6px' }}>
+                      {EXTENDED_BITS.map((bits) => {
+                        const wire = bitsToWireRaw(bits)
+                        return (
+                          <button
+                            key={bits}
+                            className={`choice-btn${resWire === wire ? ' active' : ''}`}
+                            title={t('device.extTitle').replace('{wire}', String(wire))}
+                            onClick={() => edit(() => fun.extend.setStickResolution(fd, wire))}
+                          >
+                            <span className="choice-label">{bits}-bit</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <Hint style={{ marginTop: 8 }}>{t('device.extHint')}</Hint>
                     <Hint style={{ marginTop: 8 }}>
                       {t('device.bitNote')}
                     </Hint>
