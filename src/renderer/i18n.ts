@@ -72,8 +72,6 @@ const STR: Dict = {
   'sticks.addPoint': { en: '+ Add point', zh: '+ 添加点', ja: '+ ポイント追加', ru: '+ Добавить точку' },
   'sticks.copyCurve': { en: 'Copy pad curve → other stick', zh: '复制手柄曲线→另一摇杆', ja: 'パッドカーブをもう一方へコピー', ru: 'Скопировать кривую → другой стик' },
   'sticks.saveCurrent': { en: 'Save current', zh: '保存当前', ja: '現在を保存', ru: 'Сохранить текущее' },
-  'sticks.linear': { en: 'Linear', zh: '线性', ja: 'リニア', ru: 'Линейная' },
-  'sticks.spline': { en: 'Spline', zh: '样条', ja: 'スプライン', ru: 'Сплайн' },
   'sticks.resetCurve': { en: 'Reset curve', zh: '重置曲线', ja: 'カーブリセット', ru: 'Сбросить кривую' },
   'sticks.shape': { en: 'Shape', zh: '形状', ja: '形状', ru: 'Форма' },
   'sticks.reset': { en: 'Reset everything', zh: '全部重置', ja: 'すべてリセット', ru: 'Сбросить всё' },

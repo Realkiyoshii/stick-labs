@@ -8,8 +8,6 @@ import {
   bitsToLevels,
   bitsToWireRaw,
   resampleCurve,
-  resampleSpline,
-  traceSpline,
   addDesignPoint,
   DESIGN_MIN_POINTS,
   DESIGN_MAX_POINTS,
@@ -77,7 +75,7 @@ function Slider(props: {  label: string
   )
 }
 
-function CurvePlot({ points, onChange, overlay, smooth }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; overlay?: Array<{ x: number; y: number }>; smooth?: boolean }): JSX.Element {
+function CurvePlot({ points, onChange, overlay }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; overlay?: Array<{ x: number; y: number }> }): JSX.Element {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const drag = useRef<number | null>(null)
 
@@ -190,8 +188,9 @@ function CurvePlot({ points, onChange, overlay, smooth }: { points: Array<{ x: n
     ctx.strokeStyle = '#f43f52'
     ctx.lineWidth = 2
     ctx.beginPath()
-    const line = smooth ? traceSpline(points) : points
-    line.forEach((p, i) => {
+    // Drawn exactly as placed: the design is a polyline, and the pad samples it
+    // straight at its 5 slots, so the canvas shows the same thing the pad gets.
+    points.forEach((p, i) => {
       if (i === 0) ctx.moveTo(toX(p.x), toY(p.y))
       else ctx.lineTo(toX(p.x), toY(p.y))
     })
@@ -219,7 +218,7 @@ function CurvePlot({ points, onChange, overlay, smooth }: { points: Array<{ x: n
       ctx.arc(toX(p.x), toY(p.y), 5, 0, Math.PI * 2)
       ctx.fill()
     })
-  }, [points, overlay, smooth])
+  }, [points, overlay])
   return (
     <canvas
       ref={ref}
@@ -642,25 +641,10 @@ export default function App(): JSX.Element {
   })
   // Free-point curve design (2–10 pts). The pad only stores 5, so this is a
   // design canvas — `quantized` is what actually gets written. Persisted per
-  // slot+stick so a half-finished shape survives a reload.
+  // slot+stick so a half-finished shape survives a reload. Sampling is always
+  // straight-line: the pad interpolates its 5 slots linearly, so smoothing the
+  // design first would only invent values the hardware never sees.
   const [design, setDesign] = useState<Array<{ x: number; y: number }>>([])
-  // Slot sampling mode for the curve designer: straight segments (linear)
-  // or the smoothed spline. Only changes the 5 bytes that get written —
-  // the red design stays exactly as drawn.
-  const [spline, setSpline] = useState<boolean>(() => {
-    try {
-      return window.localStorage.getItem('sticklabs.spline') === '1'
-    } catch {
-      return false
-    }
-  })
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('sticklabs.spline', spline ? '1' : '0')
-    } catch {
-      /* storage full/blocked — sampling mode still works for the session */
-    }
-  }, [spline])
   // Which remap row's icon dropdown is open (row key, or null).
   const [bindOpen, setBindOpen] = useState<string | null>(null)
   // Per-stick output lock: locked sticks are forced back to normal stick
@@ -1047,15 +1031,52 @@ export default function App(): JSX.Element {
     }
   }, [design, designKey])
 
-  const quantized = design.length >= 2 ? (spline ? resampleSpline(design) : resampleCurve(design)) : pts
+  const quantized = design.length >= 2 ? resampleCurve(design) : pts
   const locked = connected && (!model || model.support !== 'full')
   const modelId = model?.id ?? 'G7ProCE'
   const modelLen = model && model.profileLength > 0 ? model.profileLength : PROFILE_LENGTH
   modelLenRef.current = modelLen
   const padCurve = pts
 
-  function reloadDesignFromPad(): void {
+  /** Canvas only: rebuild the design points from the working copy (no pad traffic). */
+  function syncDesignFromCopy(): void {
     if (pkt) setDesign(stick.curve(pkt).map((p) => ({ ...p })))
+  }
+
+  /**
+   * Curve card's "Reload from pad": actually reads the pad. Restores THIS
+   * stick's curve + transform bytes (11–23) in the working copy, so any other
+   * staged edits survive; `dirty` is then recomputed from a real byte compare
+   * against the bytes just read rather than assumed.
+   */
+  async function reloadCurveFromPad(): Promise<void> {
+    if (!blob || !pkt) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await api().readProfile(slot, modelLen)
+      const padBytes = b64ToBytes(res.bytes)
+      const padStick = parseProfile(padBytes, modelId).sticks[which]
+      if (!padStick) return
+      edit(() => {
+        for (let i = 11; i <= 23; i++) pkt.bytes[i] = padStick.bytes[i]
+      })
+      syncDesignFromCopy()
+      let same = blob.length === padBytes.length
+      if (same) {
+        for (let i = 0; i < blob.length; i++) {
+          if (blob[i] !== padBytes[i]) {
+            same = false
+            break
+          }
+        }
+      }
+      setDirty(!same)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   /**
@@ -1065,10 +1086,10 @@ export default function App(): JSX.Element {
    * the sampled design already equals the working copy, so loading and
    * no-change touches never dirty the profile.
    */
-  function stageDesign(next: Array<{ x: number; y: number }>, useSpline: boolean = spline): void {
+  function stageDesign(next: Array<{ x: number; y: number }>): void {
     setDesign(next)
     if (!pkt || next.length < 2) return
-    const q = useSpline ? resampleSpline(next) : resampleCurve(next)
+    const q = resampleCurve(next)
     const cur = stick.curve(pkt)
     if (q.length === cur.length && q.every((p, i) => p.x === cur[i].x && p.y === cur[i].y)) return
     edit(() => {
@@ -1395,12 +1416,10 @@ export default function App(): JSX.Element {
                   <div className="card">
                     <h3>{t('sticks.curve')} — {design.length} {t('sticks.points')}</h3>
                     <Hint>{t('sticks.curveHint')}</Hint>
-                    <CurvePlot points={design.length >= 2 ? design : padCurve} onChange={(next) => stageDesign(next)} overlay={quantized} smooth={spline} />
+                    <CurvePlot points={design.length >= 2 ? design : padCurve} onChange={(next) => stageDesign(next)} overlay={quantized} />
                     <div className="row" style={{ gap: 8, margin: '8px 0' }}>
                       <div style={{ flex: 1 }} />
-                      <button className={`choice-btn${!spline ? ' active' : ''}`} onClick={() => { setSpline(false); stageDesign(design, false) }}><span className="choice-label">{t('sticks.linear')}</span></button>
-                      <button className={`choice-btn${spline ? ' active' : ''}`} onClick={() => { setSpline(true); stageDesign(design, true) }}><span className="choice-label">{t('sticks.spline')}</span></button>
-                      <button className="btn sm ghost" onClick={reloadDesignFromPad}>{t('sticks.reload')}</button>
+                      <button className="btn sm ghost" disabled={busy} onClick={() => void reloadCurveFromPad()}>{t('sticks.reload')}</button>
                     </div>
                     <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
                       {Object.entries(AIM_CURVES).map(([key, c]) => (
