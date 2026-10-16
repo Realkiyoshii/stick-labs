@@ -543,6 +543,20 @@ export const trigger = {
 export const stick = {
   enabled: (p: Packet): boolean => p.bit(0, 0),
   setEnabled: (p: Packet, on: boolean): void => p.setBit(0, 0, on),
+  /** True when the stick profile byte is cleared (`stick_en = 0`). */
+  isProfileBypassed: (p: Packet): boolean => !stick.enabled(p),
+  /**
+   * GameSir's "Stick Trajectory" switch — their `stick_square` byte.
+   *
+   * Proven from GameSir Connect's own bundle: its reader sets
+   * `rawEnabled = (stick_square != 0)` (defaulting to true when `stick_en` is
+   * 0) and its writer always emits `stick_en = 1; stick_square = rawEnabled ?
+   * 1 : 0`, with `STICKCURVE_MODE = { Square: 0, Circle: 1 }` consumed as
+   * `type = rawEnabled ? Square : Circle`. Their UI names the two states
+   * "Circle" (outer path corrected into a pure circle) and "Raw" (raw sensor
+   * data, a square-circle path). There is no vendor third mode, and no code
+   * path in their app ever clears `stick_en`.
+   */
   squareGate: (p: Packet): boolean => p.bit(1, 0),
   setSquareGate: (p: Packet, on: boolean): void => p.setBit(1, 0, on),
   deadEnabled: (p: Packet): boolean => p.bit(2, 0),
@@ -624,14 +638,18 @@ export const stick = {
     return changed
   },
   /**
-   * True when this stick IS raw output: either the full bypass
-   * (`stick_en` clear — the untouched sensor, nothing else matters) or the
-   * calibrated identity — processing on, linear points + identity transform,
-   * zero deadzone window, neutral axis ratio. The bypass is the only path
-   * the firmware does not "perfect": any processing engages its correction,
-   * so neutral bytes through the pipeline still read corrected.
+   * Our neutral-state classifier: the calibrated identity (processing on,
+   * linear points with an identity transform, zero deadzone window, neutral
+   * axis ratio, no square bit) or the legacy full bypass (`stick_en` clear,
+   * which older builds of this app wrote as "pure raw 1:1").
+   *
+   * This is deliberately NOT called "raw" any more: the vendor's Raw is the
+   * `stick_square` trajectory above (raw sensor data at the outer edge), and
+   * this app no longer clears `stick_en` — the UI reads the trajectory bit
+   * directly and only mentions the bypass when it finds one. Kept because
+   * tests/curveidentity.ts pins the byte behaviour of both states.
    */
-  isRawState(p: Packet): boolean {
+  isNeutralState(p: Packet): boolean {
     if (!stick.enabled(p)) return true
     const dz = stick.deadzone(p)
     return (

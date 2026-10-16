@@ -1504,15 +1504,11 @@ export default function App(): JSX.Element {
                       {(
                         [
                           { key: 'round', hintKey: 'sticks.shapeHintRound' },
-                          { key: 'square', hintKey: 'sticks.shapeHintSquare' },
-                          { key: 'raw', hintKey: 'sticks.shapeHintRaw' }
+                          { key: 'square', hintKey: 'sticks.shapeHintRaw' }
                         ] as const
                       ).map((s) => {
-                        const isRaw = stick.isRawState(pkt)
-                        const isSquare = stick.enabled(pkt) && stick.squareGate(pkt) && !isRaw
-                        const isRound = stick.enabled(pkt) && !stick.squareGate(pkt) && !isRaw
-                        const active = (s.key === 'round' && isRound) || (s.key === 'square' && isSquare) || (s.key === 'raw' && isRaw)
-                        const label = s.key === 'round' ? t('sticks.shapeRound') : s.key === 'square' ? t('sticks.shapeSquare') : t('sticks.shapeRaw')
+                        const active = stick.enabled(pkt) && stick.squareGate(pkt) === (s.key === 'square')
+                        const label = s.key === 'round' ? t('sticks.shapeRound') : t('sticks.shapeRaw')
                         return (
                           <button
                             key={s.key}
@@ -1520,15 +1516,8 @@ export default function App(): JSX.Element {
                             title={t(s.hintKey)}
                             onClick={() => {
                               edit(() => {
-                                if (s.key === 'raw') {
-                                  // True bypass: the untouched sensor output with real
-                                  // circularity. All other bytes are left alone, so
-                                  // leaving raw restores the previous tune exactly.
-                                  stick.setEnabled(pkt, false)
-                                } else {
-                                  stick.setEnabled(pkt, true)
-                                  stick.setSquareGate(pkt, s.key === 'square')
-                                }
+                                stick.setEnabled(pkt, true)
+                                stick.setSquareGate(pkt, s.key === 'square')
                               })
                             }}
                           >
@@ -1537,6 +1526,9 @@ export default function App(): JSX.Element {
                         )
                       })}
                     </div>
+                    {stick.isProfileBypassed(pkt) && (
+                      <div className="note" style={{ marginTop: 8 }}>{t('sticks.shapeBypass')}</div>
+                    )}
                   </div>
 
                 </div>

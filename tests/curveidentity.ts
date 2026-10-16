@@ -1,5 +1,7 @@
 // Curve identity: curve writes must reset the linear-module transform bytes,
-// and the raw state must be the calibrated identity (not a bare enable flip).
+// and the neutral state must be the calibrated identity (not a bare enable
+// flip). The vendor's "Raw" is a different knob entirely — the `stick_square`
+// trajectory — and GameSir's own app never clears `stick_en`.
 import { Packet, stick, LINEAR_CURVE } from '../src/shared/profile'
 
 let failed = 0
@@ -39,7 +41,7 @@ function blankStick(): Packet {
   ])
   stick.setLinearModule(p, true, 3, 74)
   stick.setAxisRatio(p, 50)
-  check('shaped state is not raw', !stick.isRawState(p))
+  check('shaped state is not neutral', !stick.isNeutralState(p))
   check('shaped state is not identity curve', !stick.isIdentityCurve(p))
   // what every curve Send now does: points + identity mark
   stick.setCurve(p, LINEAR_CURVE.map((q) => ({ ...q })))
@@ -47,15 +49,17 @@ function blankStick(): Packet {
   check('rewritten linear is identity curve', stick.isIdentityCurve(p))
 }
 
-// legacy bypass (stick_en clear, written by older app versions) still reads as raw
+// legacy bypass (stick_en clear, written by older app versions) still counts as
+// neutral for classification — but it is NOT GameSir's Raw, and this app no
+// longer writes it (the UI reports it instead).
 {
   const p = blankStick()
   stick.applyPhysics(p)
   stick.setEnabled(p, false)
-  check('legacy stick_en=0 reads as raw', stick.isRawState(p))
+  check('legacy stick_en=0 is neutral', stick.isNeutralState(p))
 }
 
-// full raw write path: physics + enabled + round gate reads as raw
+// full neutral write path: physics + enabled + round gate reads as neutral
 {
   const p = blankStick()
   stick.setLinearModule(p, true, 1, 65)
@@ -63,13 +67,13 @@ function blankStick(): Packet {
   stick.applyPhysics(p)
   stick.setEnabled(p, true)
   stick.setSquareGate(p, false)
-  check('raw write path reads as raw', stick.isRawState(p))
+  check('identity write path is neutral', stick.isNeutralState(p))
   const lm = stick.linearModule(p)
-  check('raw write path: b11/b12/b13 = 1/0/100', p.u8(11) === 1 && lm.type === 0 && lm.rate === 100)
+  check('identity write path: b11/b12/b13 = 1/0/100', p.u8(11) === 1 && lm.type === 0 && lm.rate === 100)
 }
 
-// raw bypass is non-destructive: only the enable bit flips, everything
-// else is preserved, so leaving raw restores the exact previous tune
+// the legacy bypass is non-destructive: only the enable bit flips, everything
+// else is preserved, so leaving it restores the exact previous tune
 {
   const p = blankStick()
   stick.setEnabled(p, true)
@@ -81,27 +85,61 @@ function blankStick(): Packet {
   stick.setLinearModule(p, true, 3, 74)
   stick.setAxisRatio(p, 46)
   const before = Array.from(p.bytes)
-  // ...what the raw button does:
+  // ...what the old raw button did:
   stick.setEnabled(p, false)
-  check('raw bypass reads as raw', stick.isRawState(p))
+  check('bypass still classifies as neutral', stick.isNeutralState(p))
   const diffs = before.map((b, i) => (b === p.bytes[i] ? -1 : i)).filter((i) => i >= 0)
-  check('raw bypass flips only the enable bit', JSON.stringify(diffs) === JSON.stringify([0]))
-  // ...and leaving raw restores the tune byte-for-byte:
+  check('bypass flips only the enable bit', JSON.stringify(diffs) === JSON.stringify([0]))
+  // ...and leaving it restores the tune byte-for-byte:
   stick.setEnabled(p, true)
-  check('leaving raw restores every byte', JSON.stringify(Array.from(p.bytes)) === JSON.stringify(before))
-  check('restored tune is not raw', !stick.isRawState(p))
+  check('leaving the bypass restores every byte', JSON.stringify(Array.from(p.bytes)) === JSON.stringify(before))
+  check('restored tune is not neutral', !stick.isNeutralState(p))
 }
 
-// square gate or leftover deadzone disqualifies raw
+// a non-neutral tune disqualifies the neutral state
 {
   const p = blankStick()
   stick.applyPhysics(p)
   stick.setEnabled(p, true)
   stick.setSquareGate(p, true)
-  check('square gate is not raw', !stick.isRawState(p))
+  check('square trajectory is not the neutral state', !stick.isNeutralState(p))
   stick.setSquareGate(p, false)
   stick.setDeadzone(p, { begin: 50, end: 1000, beginAnti: 0, endAnti: 1000 })
-  check('5% deadzone is not raw', !stick.isRawState(p))
+  check('5% deadzone is not the neutral state', !stick.isNeutralState(p))
+}
+
+// GameSir parity: their "Stick Trajectory" is the stick_square byte alone, with
+// stick_en kept at 1 in every vendor code path. The card's two buttons must
+// produce exactly those two byte states, and never a cleared stick_en.
+{
+  const p = blankStick()
+  // Circle
+  stick.setEnabled(p, true)
+  stick.setSquareGate(p, false)
+  check('Circle = stick_en 1 / stick_square 0', p.u8(0) === 1 && p.u8(1) === 0)
+  // Raw
+  stick.setEnabled(p, true)
+  stick.setSquareGate(p, true)
+  check('Raw = stick_en 1 / stick_square 1', p.u8(0) === 1 && p.u8(1) === 1)
+  check('Raw is not a bypass', !stick.isProfileBypassed(p))
+  stick.setEnabled(p, false)
+  check('bypass is detected', stick.isProfileBypassed(p) && stick.enabled(p) === false)
+}
+
+// the Physics preset must leave the trajectory choice alone: a Raw stick stays
+// Raw, and nothing in it clears stick_en
+{
+  const p = blankStick()
+  stick.setEnabled(p, true)
+  stick.setSquareGate(p, true)
+  stick.applyPhysics(p)
+  check('physics keeps Raw (stick_square 1)', stick.squareGate(p) && p.u8(1) === 1)
+  check('physics leaves stick_en at 1', p.u8(0) === 1 && !stick.isProfileBypassed(p))
+  const q = blankStick()
+  stick.setEnabled(p, true)
+  stick.setSquareGate(q, false)
+  stick.applyPhysics(q)
+  check('physics keeps Circle (stick_square 0)', !stick.squareGate(q) && q.u8(1) === 0)
 }
 
 if (failed > 0) {
