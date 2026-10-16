@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict'
+import { Packet, motion, fun, parseProfile, serializeProfile } from '../src/shared/profile'
+import { bounded, setWindow, setCustomCurve, setMotionActivation, setPercent } from '../src/shared/gyro'
+const p = new Packet(new Uint8Array(41).fill(0xa0))
+motion.setOrientation(p, 2)
+assert.equal(p.u8(4), 0xa3)
+assert.equal(p.u8(2), 0xa0, 'orientation preserves activation keys')
+motion.setTriggerKeys(p, [9,10,255])
+assert.deepEqual(motion.triggerKeys(p), [9,10,255])
+assert.equal(p.u8(5), 0xa0, 'keys preserve deadzone flag')
+for (const [value,wire] of [[0,2],[1,1],[2,3]]) {
+ motion.setOrientation(p,value); assert.equal(p.u8(4),0xa0|wire); assert.equal(motion.orientation(p),value)
+}
+setWindow(p,6,[50,950,100,900])
+assert.deepEqual([6,8,10,12].map(i=>p.u16be(i)),[50,950,100,900])
+let saved=p.bytes.slice()
+assert.throws(()=>setWindow(p,6,[950,50,0,1000])); assert.deepEqual(p.bytes,saved)
+const points=[0,64,128,191,255].map(v=>({x:v,y:v}))
+setCustomCurve(p,17,points); assert.equal(p.u8(15),3); assert.equal(p.u8(14),0xa1)
+saved=p.bytes.slice()
+assert.throws(()=>setCustomCurve(p,17,points.map((v,i)=>i===2?{x:64,y:128}:v))); assert.deepEqual(p.bytes,saved)
+for(const v of [101,NaN,1.5]) assert.throws(()=>bounded(v))
+const original=Uint8Array.from({length:1070},(_,i)=>(i*13)%256); original.fill(0,0,32)
+const profile=parseProfile(original,'G7ProCE')
+function unchangedExcept(allowed:number[]):void {
+ const out=serializeProfile(profile)
+ for(let i=0;i<out.length;i++) if(!allowed.includes(i)) assert.equal(out[i],original[i],`unrelated byte ${i}`)
+}
+setMotionActivation(profile.motion,1,3)
+assert.equal(profile.motion[0].u8(0),0); assert.equal(profile.motion[1].u8(0),3)
+unchangedExcept([988,1029])
+setMotionActivation(profile.motion,1,0); assert.equal(profile.motion[0].u8(0),0)
+setMotionActivation(profile.motion,0,1); assert.equal(profile.motion[1].u8(0),0)
+motion.setTriggerKeys(profile.motion[0],[9,10,11]); motion.setOrientation(profile.motion[0],2)
+setWindow(profile.motion[0],6,[0,1000,0,1000]); setCustomCurve(profile.motion[0],17,points)
+for(const i of [28,29,30]) profile.motion[0].setBit(i,0,true)
+for(const i of [31,32,40]) setPercent(profile.motion[0],i,50)
+profile.motion[0].setU8(33,4); profile.motion[0].setBit(27,0,true)
+for(let i=35;i<40;i++) profile.motion[0].setU8(i,9)
+fun.extend.setSensorQuickMode(profile.funData,1)
+unchangedExcept([47,1029,...Array.from({length:41},(_,i)=>988+i)])
+assert.equal(profile.motion[0].u8(34),original[1022],'unverified byte preserved')
+console.log('Gyro offsets, exclusivity, atomic validation and unrelated-byte preservation passed.')

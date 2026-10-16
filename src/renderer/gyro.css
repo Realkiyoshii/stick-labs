@@ -1,0 +1,14 @@
+.gyro-tuning { gap: 16px; }
+.gyro-tuning .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+.gyro-tuning .control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 12px; }
+.gyro-tuning .control-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.gyro-tuning .control-fieldset:disabled { opacity: .55; }
+.gyro-tuning .segmented { display: flex; gap: 8px; margin: 12px 0; }
+.gyro-tuning .segmented button { flex: 1; padding: 12px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.gyro-tuning .segmented button.selected { border-color: var(--accent); color: var(--accent); }
+.gyro-tuning .segmented small { display: block; margin-top: 4px; }
+.gyro-tuning .check-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.gyro-title { display: flex; gap: 8px; align-items: baseline; position: relative; }
+.gyro-title h3 { flex: 1; }
+.gyro-title summary { cursor: pointer; color: var(--accent); }
+.gyro-help { position: absolute; z-index: 10; right: 0; top: 100%; width: min(360px, 80vw); padding: 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }

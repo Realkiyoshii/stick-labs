@@ -707,24 +707,24 @@ export const LINEAR_CURVE: ReadonlyArray<{ x: number; y: number }> = [
 
 export const motion = {
   orientation: (p: Packet): number => {
-    const axis = p.u8(2)
+    const axis = p.u8(4)
     if ((axis & 3) === 3) return 2
     if (axis & 1) return 1
     if (axis & 2) return 0
     return 0
   },
   setOrientation: (p: Packet, value: number): void => {
-    let axis = p.u8(2) & ~3
+    let axis = p.u8(4) & ~3
     if (value === 2) axis |= 3
     else if (value === 1) axis |= 1
     else if (value === 0) axis |= 2
-    p.setU8(2, axis)
+    p.setU8(4, axis)
   },
-  triggerKeys: (p: Packet): [number, number, number] => [p.u8(3), p.u8(4), p.u8(5)],
+  triggerKeys: (p: Packet): [number, number, number] => [p.u8(1), p.u8(2), p.u8(3)],
   setTriggerKeys: (p: Packet, keys: [number, number, number]): void => {
-    p.setU8(3, keys[0])
-    p.setU8(4, keys[1])
-    p.setU8(5, keys[2])
+    p.setU8(1, keys[0])
+    p.setU8(2, keys[1])
+    p.setU8(3, keys[2])
   }
 }
 

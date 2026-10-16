@@ -1,3 +1,4 @@
+import { GyroTuning } from './Gyro'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
@@ -2347,7 +2348,7 @@ export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
-  const [tab, setTab] = useState<'sticks' | 'device' | 'buttons' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
+  const [tab, setTab] = useState<'sticks' | 'device' | 'buttons' | 'gyro' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
   const [measuring, setMeasuring] = useState<{ left: number; suggestion: { dev: number; pct10: number } | null } | null>(null)
   const wanderRef = useRef(0)
   const modelLenRef = useRef(PROFILE_LENGTH)
@@ -3034,6 +3035,9 @@ export default function App(): JSX.Element {
             </button>
             <button type="button" className={`nav-item${tab === 'buttons' ? ' active' : ''}`} onClick={() => setTab('buttons')}>
               {t('nav.buttons')}
+            </button>
+            <button type="button" className={`nav-item${tab === 'gyro' ? ' active' : ''}`} onClick={() => setTab('gyro')}>
+              Gyro
             </button>
             <button type="button" className={`nav-item${tab === 'calibrate' ? ' active' : ''}`} onClick={() => setTab('calibrate')}>
               {t('nav.calibrate')}
@@ -3746,6 +3750,9 @@ export default function App(): JSX.Element {
               )}
             </>
           )}
+          {tab === 'gyro' && (connected && profile && !locked && modelId === 'G7ProCE'
+            ? <GyroTuning key={`${slot}:${loadId}`} profile={profile} edit={edit} busy={busy} />
+            : <div className="note">Connect a supported G7 Pro 8K and load a profile to edit gyro settings.</div>)}
           {tab === 'buttons' && connected && profile && (
             <>
             <TriggerDeadzoneCard profile={profile} edit={edit} />
