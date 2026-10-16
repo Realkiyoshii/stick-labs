@@ -4,3 +4,5 @@ dist/
 .probe-tmp/
 .test-tmp/
 .git/
+# Agent instruction file — local only, deliberately never published.
+AGENTS.md
