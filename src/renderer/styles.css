@@ -1273,7 +1273,7 @@ table.tbl tbody tr:hover {
   .lj-stick-workspace .lj-live-card .stick-viz { max-width: 180px; }
 }
 /* Compact creator links in the sidebar footer. */
-.creator-links { display: grid; grid-template-columns: .82fr 1.18fr; gap: 6px; margin-top: 4px; }
+.creator-links { display: grid; grid-template-columns: 1fr 32px 1.15fr; gap: 6px; margin-top: 4px; }
 .creator-link { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 30px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--text-2); font-family: inherit; font-size: 9.5px; font-weight: 600; line-height: 1.2; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
 .creator-link span { white-space: nowrap; }
 .creator-link svg { flex-shrink: 0; width: 14px; height: 14px; }
