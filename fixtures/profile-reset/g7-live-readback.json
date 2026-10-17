@@ -1,0 +1,18 @@
+{
+  "model": "G7ProCE",
+  "firmware": "0229",
+  "slot": 4,
+  "activeSlot": 1,
+  "testReadback": {
+    "name": "Stick Labs Clean",
+    "bytes": 1070
+  },
+  "activeProfileUnchanged": true,
+  "testVerified": true,
+  "originalRestored": true,
+  "targetSha256": "37e855264d0c7b76cb19a4abf94fab28c403030c3b6d0000e0683b2bffacc2ba",
+  "readbackSha256": "37e855264d0c7b76cb19a4abf94fab28c403030c3b6d0000e0683b2bffacc2ba",
+  "originalSha256": "6073d03e8414a9a407f16634abd10e57320bbefda089359ec7e1b7f8e47166f7",
+  "restoredSha256": "6073d03e8414a9a407f16634abd10e57320bbefda089359ec7e1b7f8e47166f7",
+  "scope": "G7ProCE full-profile storage readback and restoration; no measurement of in-game response."
+}

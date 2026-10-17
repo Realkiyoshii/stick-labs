@@ -142,6 +142,24 @@ function blankStick(): Packet {
   check('physics keeps Circle (stick_square 0)', !stick.squareGate(q) && q.u8(1) === 0)
 }
 
+// Regression: selecting the exact same points must still remove Connect's transform.
+for (const [en, type, rate] of [[true, 3, 74], [true, 1, 65], [false, 0, 100], [true, 0, 50]] as const) {
+  const p = blankStick()
+  stick.applyPhysics(p)
+  stick.setLinearModule(p, en, type, rate)
+  const points = stick.curve(p)
+  const before = Array.from(p.bytes)
+  check(`same points with vendor transform ${en}/${type}/${rate} need replacement`, !stick.matchesCurveIdentity(p, points))
+  if (!stick.matchesCurveIdentity(p, points)) {
+    stick.setCurve(p, points)
+    stick.markCurveIdentity(p)
+  }
+  check('replacement removes vendor shaping', stick.matchesCurveIdentity(p, points))
+  check('replacement preserves every unrelated stick byte', Array.from(p.bytes).every((v, i) => (i >= 11 && i <= 13) || v === before[i]))
+  const stable = JSON.stringify(Array.from(p.bytes))
+  check('a repeated curve selection is now a true no-op', stick.matchesCurveIdentity(p, points) && JSON.stringify(Array.from(p.bytes)) === stable)
+}
+
 if (failed > 0) {
   console.log(`${failed} FAILURES`)
   process.exit(1)

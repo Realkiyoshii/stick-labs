@@ -1281,3 +1281,145 @@ table.tbl tbody tr:hover {
 .creator-coffee svg { color: #e8b356; }
 .creator-link:hover { color: var(--text); border-color: var(--line-2); background: var(--bg-3); }
 .creator-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Focused remapping workspace shared by GameSir and LeadJoy. */
+.card.remap-workspace { padding: 0; min-width: 0; overflow: visible; }
+.remap-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 22px; border-bottom: 1px solid var(--line); }
+.remap-header h3 { margin: 4px 0 6px; font-size: 20px; letter-spacing: -.025em; }
+.remap-header p { margin: 0; color: var(--text-3); font-size: 12px; }
+.remap-help { position: relative; flex-shrink: 0; }
+.remap-help summary { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid var(--line-2); border-radius: 50%; color: var(--text-3); font-size: 12px; cursor: pointer; list-style: none; }
+.remap-help summary::-webkit-details-marker { display: none; }
+.remap-help > div { position: absolute; z-index: 5; top: 34px; right: 0; width: min(420px, 65vw); padding: 16px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--bg-3); box-shadow: 0 10px 30px #0004; color: var(--text-2); font-size: 11px; line-height: 1.65; }
+.remap-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(250px, .75fr); min-height: 460px; }
+.remap-sources { min-width: 0; padding: 20px; }
+.remap-search { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-1); color: var(--text-3); }
+.remap-search input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; outline: 0; }
+.remap-search:focus-within { border-color: var(--accent); }
+.remap-source-scroll { max-height: 445px; overflow: auto; scrollbar-gutter: stable; margin: 18px -4px 0 0; padding-right: 5px; }
+.remap-source-group + .remap-source-group { margin-top: 20px; }
+.remap-group-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--text-3); font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .1em; }
+.remap-group-label > span:last-child { font: 10px 'Cascadia Mono', Consolas, monospace; color: var(--text-3); }
+.remap-source-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.remap-source { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 103px; padding: 12px 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-1); color: var(--text-2); font-family: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
+.remap-source:hover { background: var(--bg-3); border-color: var(--line-2); }
+.remap-source.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-1)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent); }
+.remap-source-icon { display: grid; place-items: center; height: 29px; }
+.remap-source strong { font-size: 10px; line-height: 1.3; text-align: center; }
+.remap-source small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 8px; }
+.remap-source > i { position: absolute; top: 8px; right: 8px; width: 4px; height: 4px; border-radius: 50%; background: var(--good); }
+.remap-binding { display: flex; flex-direction: column; min-width: 0; padding: 24px; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 40%, transparent); }
+.remap-preview { display: grid; grid-template-columns: 1fr 24px 1fr; align-items: start; gap: 8px; margin: 30px 0; }
+.remap-preview > div { display: grid; justify-items: center; gap: 12px; min-width: 0; }
+.remap-preview-icon { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--bg-1); }
+.remap-preview-icon.output { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.remap-preview strong { max-width: 100%; overflow-wrap: anywhere; text-align: center; color: var(--text-2); font-size: 12px; line-height: 1.4; }
+.remap-preview-arrow { padding-top: 22px; text-align: center; color: var(--text-3); font-size: 20px; }
+.remap-binding-label { margin: 0 0 8px; color: var(--text-3); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em; }
+.remap-binding [data-keyselect] { width: 100%; }
+.remap-binding [data-keyselect] > button.input { width: 100% !important; min-height: 43px; padding: 12px; background: var(--bg-1); }
+.remap-binding-state { display: flex; gap: 7px; align-items: center; margin: 14px 0 20px; color: var(--text-3); font-size: 10px; }
+.remap-binding-state i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+.remap-binding-state.changed { color: var(--good); }
+.remap-binding-state.changed i { background: var(--good); }
+.remap-binding .remap-reset { align-self: flex-start; padding: 8px 10px; font-size: 10px; }
+.remap-apply-note { margin: auto 0 0; padding-top: 28px; color: var(--text-3); font-size: 10px; line-height: 1.65; }
+.remap-readonly { color: var(--text-2); font-size: 12px; }
+.remap-readonly small { display: block; color: var(--text-3); font-size: 10px; margin-top: 8px; }
+.remap-empty { padding: 30px 0; text-align: center; font-size: 12px; color: var(--text-3); }
+.remap-picker-search { position: sticky; top: -4px; z-index: 1; padding: 5px 2px 8px; background: var(--bg-2); }
+.remap-picker-search input { width: 100%; font-size: 12px; }
+.remap-workspace button:focus-visible, .remap-help summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lj-buttons-workspace .remap-layout { grid-template-columns: 1fr; }
+.lj-buttons-workspace .remap-binding { border-left: 0; border-top: 1px solid var(--line); }
+@media (max-width: 1000px) { .remap-source-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .remap-layout { grid-template-columns: 1fr; } .remap-binding { border-left: 0; border-top: 1px solid var(--line); } .remap-source-scroll { max-height: 280px; } .remap-source-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } .remap-apply-note { margin-top: 16px; padding-top: 0; } }
+
+/* Quick bind: paired input choices and a quiet, contained listening state. */
+.remap-capture-panel { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); }
+.remap-capture-panel.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.remap-capture-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.remap-capture-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.remap-capture-choice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 76px; padding: 10px 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.remap-capture-icon { display: grid; place-items: center; height: 26px; }
+.remap-capture-choice:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-2)); }
+.remap-capture-choice:disabled { opacity: .4; cursor: not-allowed; }
+.remap-capture-cancel { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; }
+.remap-capture-cancel:hover { color: var(--text); border-color: var(--accent); }
+.remap-capture-cancel kbd { margin-left: auto; padding: 2px 5px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--text-3); font: inherit; font-size: 9px; }
+.remap-capture-message { font-size: 10px; line-height: 1.6; color: var(--text-3); margin: 10px 0 0; }
+.remap-capture-message.listening { color: var(--text-2); }
+.remap-listening-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+
+
+/* Sticks and Curves are separate workspaces; input and output have their own cards. */
+.tuning-page-heading { margin: 8px 0 22px; }
+.tuning-page-heading h2 { margin: 0 0 7px; color: var(--text); font-size: 22px; font-weight: 650; letter-spacing: -.03em; }
+.tuning-page-heading p { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.65; }
+.stick-clean-workspace { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(0, 1.2fr); gap: 20px; align-items: start; }
+.stick-clean-workspace > .stack, .lj-zone-sections { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.stick-clean-workspace .card { margin: 0; padding: 22px; }
+.stick-clean-workspace .stick-primary-card { grid-area: auto; }
+.stick-clean-workspace .stick-live-card h3, .stick-clean-workspace .lj-live-card h3 { font-size: 12px; }
+.stick-clean-workspace .stick-viz { width: 100%; max-width: 260px; margin: 16px auto; }
+.stick-clean-workspace .stick-panel-heading { align-items: center; margin-bottom: 8px; }
+.stick-clean-workspace .stick-panel-heading h3 { font-size: 17px; margin: 5px 0 0; text-transform: none; letter-spacing: -.02em; }
+.stick-clean-workspace .stick-intro { margin: 10px 0 20px; color: var(--text-3); font-size: 12px; line-height: 1.65; }
+.stick-clean-workspace .stick-output-card { border-color: color-mix(in srgb, var(--accent) 18%, var(--line)); }
+.stick-clean-workspace details.card.stick-extra { padding: 0; background: var(--bg-1); }
+.stick-clean-workspace .stick-extra > summary { padding: 15px 18px; cursor: pointer; font-size: 12px; color: var(--text-2); }
+.stick-clean-workspace details.card > .stick-extra-body { padding: 0 18px 18px; }
+.stick-clean-workspace .stick-extra[open] > summary { margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.stick-clean-workspace .stick-precision-card { padding: 0; background: var(--bg-1); }
+.stick-clean-workspace .stick-precision-card .stick-extra-body { padding: 0 18px 18px; }
+.curves-workspace { max-width: 1000px; margin: 0 auto; }
+.curves-workspace .stick-curve-card, .curves-workspace .lj-curve-card { min-height: auto; padding: 24px; }
+.curves-workspace .plot { width: 100%; border-radius: 12px; background: var(--bg-1); }
+.curves-workspace .stick-curve-tools { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); }
+.curves-workspace .stick-curve-tools > summary { padding: 14px 16px; cursor: pointer; color: var(--text-2); font-size: 12px; font-weight: 600; }
+.curves-workspace .stick-extra-body { padding: 0 16px 16px; }
+@media (max-width: 850px) { .stick-clean-workspace { grid-template-columns: minmax(0, 1fr); } .stick-clean-monitor { order: 1; } .stick-clean-controls { order: 0; } }
+
+/* Point values stay beside the graph; all preset controls follow the editor. */
+.curves-workspace { max-width: 1200px; }
+.curve-edit-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .5fr); gap: 20px; align-items: start; margin-top: 16px; }
+.curve-graph-panel { min-width: 0; }
+.curve-point-editor { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); }
+.curve-point-editor h4 { margin: 0 0 12px; font-size: 12px; font-weight: 650; color: var(--text-2); }
+.curves-workspace .curve-point-editor .stick-extra-body { padding: 0; }
+.curve-point-editor .tbl { width: 100%; table-layout: fixed; margin-top: 0 !important; }
+.curve-point-editor .tbl th, .curve-point-editor .tbl td { padding: 6px 4px; }
+.curve-point-editor .tbl th:first-child { width: 26px; }
+.curve-point-editor .tbl th:last-child:empty { width: 30px; }
+.curve-point-editor .tbl .input { width: 100%; min-width: 0; padding: 7px 5px; font-size: 12px; text-align: center; }
+.curve-point-editor .tbl .btn { padding: 5px; }
+.curve-point-editor .note { font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.curve-preset-area { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.curve-preset-area .curve-starters { margin-top: 0; }
+@media (max-width: 800px) { .curve-edit-layout { grid-template-columns: minmax(0, 1fr); } .curve-point-editor { max-height: none; } }
+
+.curve-presets-visible h4 { margin: 0 0 16px; color: var(--text); font-size: 14px; font-weight: 650; }
+.curves-workspace .curve-presets-visible > .stick-extra-body { padding: 0; }
+.curve-presets-visible .row.wrap { row-gap: 10px !important; }
+
+.stick-clean-workspace .stick-visible-section h3 { font-size: 13px; line-height: 1.5; text-transform: none; letter-spacing: 0; }
+.stick-clean-workspace .stick-visible-section > .stick-extra-body { padding: 0; }
+.stick-clean-workspace .stick-visible-section .choice-btn { min-height: 38px; }
+
+.curve-spline-control { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); }
+.curve-spline-control strong { font-size: 12px; font-weight: 650; color: var(--text-2); }
+.curve-spline-control p { max-width: 600px; margin: 5px 0 0; font-size: 10px; line-height: 1.6; color: var(--text-3); }
+.curve-spline-switch { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); color: var(--text-3); cursor: pointer; }
+.curve-spline-switch > span { display: block; position: relative; width: 26px; height: 15px; border-radius: 12px; background: var(--line-2); }
+.curve-spline-switch > span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 9px; height: 9px; border-radius: 50%; background: var(--text-2); transition: transform .15s; }
+.curve-spline-switch b { min-width: 22px; font-size: 10px; font-weight: 600; }
+.curve-spline-switch.enabled { color: var(--text); border-color: var(--accent); }
+.curve-spline-switch.enabled > span { background: var(--accent); }
+.curve-spline-switch.enabled > span::after { transform: translateX(11px); background: var(--on-accent); }
+.curve-spline-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.clean-profile-card { margin-top: 20px; padding: 22px; border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); }
+.clean-profile-card > p { max-width: 850px; margin: 12px 0; color: var(--text-2); font-size: 12px; line-height: 1.7; }
+.clean-profile-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.clean-profile-summary > span { padding: 7px 10px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 7px; color: var(--text-2); font-size: 10px; }
+.clean-profile-card > .clean-profile-detail { color: var(--text-3); font-size: 10px; margin-bottom: 18px; }

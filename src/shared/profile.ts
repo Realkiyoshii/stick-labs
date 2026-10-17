@@ -578,6 +578,13 @@ export const stick = {
     stick.setLinearModule(p, true, 0, 100)
   },
 
+  /** Matching points are a no-op only when no vendor curve transform remains. */
+  matchesCurveIdentity(p: Packet, points: Array<{ x: number; y: number }>): boolean {
+    const lm = stick.linearModule(p)
+    const current = stick.curve(p)
+    return lm.en && lm.type === 0 && lm.rate === 100 &&
+      points.length === current.length && points.every((q, i) => q.x === current[i].x && q.y === current[i].y)
+  },
   /** True when the 5 points are linear AND the transform is identity. */
   isIdentityCurve(p: Packet): boolean {
     const pts = stick.curve(p)

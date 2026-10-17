@@ -1,0 +1,18 @@
+{
+  "model": "T3CE",
+  "firmware": "0243",
+  "slot": 4,
+  "activeSlot": 1,
+  "testReadback": {
+    "name": "Stick Labs Clean",
+    "bytes": 1935
+  },
+  "activeProfileUnchanged": true,
+  "testVerified": true,
+  "originalRestored": true,
+  "targetSha256": "51777123520d072254bf2a3bc0b712163834c5fa2f3be682acc418fe7392a56c",
+  "readbackSha256": "51777123520d072254bf2a3bc0b712163834c5fa2f3be682acc418fe7392a56c",
+  "originalSha256": "d40dd672505e81ecddb882dd76781004a06b2ae5de01711f610ba89d9587e0e3",
+  "restoredSha256": "d40dd672505e81ecddb882dd76781004a06b2ae5de01711f610ba89d9587e0e3",
+  "scope": "T3CE full-profile storage readback and restoration. G7ProCE proof is in g7-live-readback.json."
+}

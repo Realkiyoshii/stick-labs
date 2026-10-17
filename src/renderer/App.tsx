@@ -1,4 +1,7 @@
+import { buildCleanProfile } from '@shared/clean-profile'
+import { capturedKeyTarget, capturedPadTarget, PadCaptureGate, type CaptureFamily } from '@shared/button-capture'
 import { useContext, useEffect, useRef, useState } from 'react'
+import { TriggerSettings } from './TriggerSettings'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
@@ -8,6 +11,7 @@ import {
   bitsToLevels,
   bitsToWireRaw,
   resampleCurve,
+  traceSpline,
   addDesignPoint,
   DESIGN_MIN_POINTS,
   DESIGN_MAX_POINTS,
@@ -91,7 +95,26 @@ function Slider(props: {  label: React.ReactNode
   )
 }
 
-function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_INFINITY, overlay, max = 255, height = 240 }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; onAddPoint?: (point: { x: number; y: number }) => void; maxPoints?: number; overlay?: Array<{ x: number; y: number }>; max?: number; height?: number }): JSX.Element {
+type CurvePoint = { x: number; y: number }
+type CurveEditorDraft = { points: CurvePoint[]; spline: boolean; output: string }
+function sampleDesign(points: CurvePoint[], spline: boolean): CurvePoint[] {
+  return resampleCurve(spline ? traceSpline(points, 255) : points)
+}
+function sampleLjDesign(points: CurvePoint[], spline: boolean): CurvePoint[] {
+  if (!spline) return points.map(p => ({ ...p }))
+  const zones = ljCurveZones(toPairs(points))
+  const width = zones.end - zones.start
+  const range = zones.antiEnd - zones.antiStart
+  if (width <= 0 || range === 0) return points.map(p => ({ ...p }))
+  const normalized = points.map(p => ({ x: (p.x - zones.start) * 255 / width, y: (p.y - zones.antiStart) * 255 / range }))
+  return toPts(ljSampleDesign(traceSpline(normalized, 255), zones))
+}
+function SplineControl({ enabled, onChange, slots }: { enabled: boolean; onChange: (enabled: boolean) => void; slots: number }): JSX.Element {
+  const t = useT()
+  return <div className="curve-spline-control"><div><strong>{t('sticks.spline')}</strong><p>{t('sticks.splineHelp').replace('{slots}', String(slots))}</p></div><button type="button" role="switch" aria-checked={enabled} aria-label={t('sticks.spline')} className={`curve-spline-switch${enabled ? ' enabled' : ''}`} onClick={() => onChange(!enabled)}><span aria-hidden="true" /><b>{t(enabled ? 'sticks.splineOn' : 'sticks.splineOff')}</b></button></div>
+}
+
+function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_INFINITY, overlay, max = 255, height = 240, spline = false }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; onAddPoint?: (point: { x: number; y: number }) => void; maxPoints?: number; overlay?: Array<{ x: number; y: number }>; max?: number; height?: number; spline?: boolean }): JSX.Element {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const drag = useRef<number | null>(null)
 
@@ -207,9 +230,9 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
     ctx.strokeStyle = '#f43f52'
     ctx.lineWidth = 2
     ctx.beginPath()
-    // Drawn exactly as placed: the design is a polyline, and the pad samples it
-    // straight at its 5 slots, so the canvas shows the same thing the pad gets.
-    points.forEach((p, i) => {
+    // Draw the selected interpolation; control handles remain on the original points.
+    const line = spline ? traceSpline(points.map(p => ({ x: p.x * 255 / max, y: p.y * 255 / max })), 255).map(p => ({ x: p.x * max / 255, y: p.y * max / 255 })) : points
+    line.forEach((p, i) => {
       if (i === 0) ctx.moveTo(toX(p.x), toY(p.y))
       else ctx.lineTo(toX(p.x), toY(p.y))
     })
@@ -237,7 +260,7 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
       ctx.arc(toX(p.x), toY(p.y), 5, 0, Math.PI * 2)
       ctx.fill()
     })
-  }, [points, overlay, max, height])
+  }, [points, overlay, max, height, spline])
   return (
     <canvas
       ref={ref}
@@ -1922,7 +1945,7 @@ function LjKeyIcon({ id, size = 18 }: { id: number; size?: number }): JSX.Elemen
  * table scrolling cannot clip it). Closes on pick, Escape, outside click,
  * scroll or resize. Only one row's popup is open at a time (lifted state).
  */
-function KeySelect({ value, disabled, open, onToggle, onClose, onPick, options, getLabel, renderIcon }: {
+function KeySelect({ value, disabled, open, onToggle, onClose, onPick, options, getLabel, renderIcon, searchable = false }: {
   value: number
   disabled?: boolean
   open: boolean
@@ -1935,8 +1958,11 @@ function KeySelect({ value, disabled, open, onToggle, onClose, onPick, options, 
   getLabel?: (v: number) => string
   /** Icon for a value — defaults to the GameSir glyphs. */
   renderIcon?: (v: number) => JSX.Element | null
+  searchable?: boolean
 }): JSX.Element {
   const t = useT()
+  const [search, setSearch] = useState('')
+  useEffect(() => { if (open) setSearch('') }, [open])
   const btnRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<{ left: number; top: number; bottom: number; width: number } | null>(null)
@@ -2016,7 +2042,8 @@ function KeySelect({ value, disabled, open, onToggle, onClose, onPick, options, 
             boxShadow: '0 12px 32px rgba(0,0,0,0.55)'
           }}
         >
-          {opts.map((o) => (
+          {searchable && <div className="remap-picker-search"><input autoFocus className="input" type="search" aria-label={t('remap.searchOutputs')} placeholder={t('remap.searchOutputs')} value={search} onChange={e => setSearch(e.target.value)} /></div>}
+          {opts.filter(o => !searchable || o.label.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map((o) => (
             <button
               key={o.value}
               type="button"
@@ -2041,40 +2068,123 @@ function KeySelect({ value, disabled, open, onToggle, onClose, onPick, options, 
   )
 }
 
-function TriggerDeadzoneCard({ profile, edit }: {
-  profile: Profile
-  edit: (fn: () => void) => void
+
+type RemapSource = {
+  id: string
+  name: string
+  icon: React.ReactNode
+  current: number
+  effective: string
+  outputIcon: React.ReactNode
+  extra: boolean
+  known: boolean
+  onPick: (value: number) => void
+}
+
+function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, captureFamily }: {
+  captureFamily: CaptureFamily
+  rows: RemapSource[]
+  disabled: boolean
+  help: React.ReactNode
+  options?: Array<{ value: number; label: string }>
+  getLabel?: (value: number) => string
+  renderIcon?: (value: number) => JSX.Element | null
 }): JSX.Element {
   const t = useT()
-  return (
-    <div className="card trigger-panel">
-      <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('buttons.title')}</span><h3>{t('trig.title')}</h3></div><KeyIcon value={19} size={24} /></div>
-      <Hint>{t('trig.hint')}</Hint>
-      {([0, 1] as const).map((ti) => {
-        const tpkt = profile.triggers[ti]
-        if (!tpkt) return null
-        const tdz = trigger.deadzonePercent(trigger.deadzone(tpkt))
-        const ten = trigger.deadEnabled(tpkt)
-        return (
-          <div key={ti} style={{ marginTop: 8 }}>
-            <div className="row spread" style={{ marginBottom: 6, alignItems: 'center' }}>
-              <span className="row trigger-side-label"><KeyIcon value={ti === 0 ? 19 : 20} size={19} /><span>{ti === 0 ? 'LT' : 'RT'}</span></span>
-              <button
-                className={`choice-btn${ten ? ' active' : ''}`}
-                onClick={() => edit(() => trigger.setDeadEnabled(tpkt, !ten))}
-              >
-                <span className="choice-label">{t('trig.enable')}</span>
-              </button>
-            </div>
-            <div className="stack" style={{ gap: 12 }}>
-              <Slider label={t('sticks.start')} value={tdz.begin} min={0} max={20} step={0.1} unit="%" onChange={(v) => edit(() => trigger.setDeadzone(tpkt, { ...trigger.deadzone(tpkt), begin: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-              <Slider label={t('sticks.end')} value={tdz.end} min={10} max={100} step={0.1} unit="%" onChange={(v) => edit(() => trigger.setDeadzone(tpkt, { ...trigger.deadzone(tpkt), end: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-            </div>
-          </div>
-        )
-      })}
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const selected = rows.find(row => row.id === selectedId) ?? rows[0]
+  const visible = rows.filter(row => `${row.name} ${row.effective}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+  const [capture, setCapture] = useState<'keyboard' | 'controller' | null>(null)
+  const [captureMessage, setCaptureMessage] = useState('')
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  useEffect(() => { setOpen(false); setCapture(null); setCaptureMessage('') }, [selected?.id])
+  useEffect(() => {
+    if (!capture || disabled || !selected?.known) { setCapture(null); return }
+    let finished = false
+    let frame = 0
+    const started = performance.now()
+    const gate = new PadCaptureGate()
+    const held = new Set<string>()
+    let chord = false
+    const stop = () => { finished = true; setCapture(null) }
+    const finish = (target: number | null) => {
+      if (finished) return
+      if (target === null) { setCaptureMessage(t('remap.captureUnsupported')); return }
+      stop()
+      selectedRef.current?.onPick(target)
+      setCaptureMessage(t('remap.captured').replace('{button}', getLabel?.(target) ?? keyLabel(target)))
+    }
+    const cancel = () => { stop(); setCaptureMessage(t('remap.captureCancelled')) }
+    const hidden = () => { if (document.hidden) cancel() }
+    const down = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopImmediatePropagation()
+      if (e.code === 'Escape') { cancel(); return }
+      if (capture !== 'keyboard' || e.repeat || performance.now() - started < 150) return
+      held.add(e.code)
+      if (held.size > 1 || (e.ctrlKey && !e.code.startsWith('Control')) || (e.shiftKey && !e.code.startsWith('Shift')) || (e.altKey && !e.code.startsWith('Alt')) || (e.metaKey && !e.code.startsWith('Meta'))) {
+        chord = true; setCaptureMessage(t('remap.captureSingle'))
+      }
+    }
+    const up = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopImmediatePropagation()
+      if (capture !== 'keyboard' || !held.has(e.code)) return
+      held.delete(e.code)
+      if (!chord) finish(capturedKeyTarget(captureFamily, e.code))
+      if (!held.size) chord = false
+    }
+    const poll = () => {
+      if (finished) return
+      if (performance.now() - started > 15000) { stop(); setCaptureMessage(t('remap.captureTimeout')); return }
+      if (capture === 'controller') {
+        const pads = Array.from(navigator.getGamepads?.() ?? []).filter((p): p is Gamepad => !!p && p.connected && p.mapping === 'standard')
+        const result = gate.sample(pads.map(p => ({ id: String(p.index) + p.id, values: p.buttons.map(b => b.pressed ? Math.max(1, b.value) : b.value) })), performance.now())
+        if (result.state === 'done' && result.index !== undefined) {
+          const target = capturedPadTarget(captureFamily, result.index)
+          if (target === null) { stop(); setCaptureMessage(t('remap.captureUnsupported')) } else finish(target)
+          return
+        }
+        setCaptureMessage(t('remap.capture' + result.state[0].toUpperCase() + result.state.slice(1)))
+      }
+      frame = requestAnimationFrame(poll)
+    }
+    setCaptureMessage(t(capture === 'keyboard' ? 'remap.captureKeyboardHint' : 'remap.captureRelease'))
+    window.addEventListener('keydown', down, true)
+    window.addEventListener('keyup', up, true)
+    window.addEventListener('blur', cancel)
+    document.addEventListener('visibilitychange', hidden)
+    frame = requestAnimationFrame(poll)
+    return () => { finished = true; cancelAnimationFrame(frame); window.removeEventListener('keydown', down, true); window.removeEventListener('keyup', up, true); window.removeEventListener('blur', cancel); document.removeEventListener('visibilitychange', hidden) }
+  }, [capture, selected?.id, disabled, captureFamily])
+
+  return <section className="card remap-workspace">
+    <header className="remap-header"><div><span className="stick-eyebrow">{t('nav.buttons')}</span><h3>{t('buttons.title')}</h3><p>{t('remap.intro')}</p></div><details className="remap-help"><summary aria-label={t('buttons.help')}>?</summary><div>{help}</div></details></header>
+    <div className="remap-layout">
+      <section className="remap-sources"><label className="remap-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><input type="search" placeholder={t('remap.searchButtons')} aria-label={t('remap.searchButtons')} value={query} onChange={e => setQuery(e.target.value)} /></label>
+        <div className="remap-source-scroll">{[false, true].map(extra => {
+          const group = visible.filter(row => row.extra === extra)
+          if (!group.length) return null
+          return <div className="remap-source-group" key={String(extra)}><div className="remap-group-label"><span>{t(extra ? 'remap.extra' : 'remap.standard')}</span><span>{group.length}</span></div><div className="remap-source-grid">{group.map(row => <button type="button" className={`remap-source${selected?.id === row.id ? ' selected' : ''}${row.current ? ' mapped' : ''}`} key={row.id} aria-pressed={selected?.id === row.id} onClick={() => { setCapture(null); setSelectedId(row.id); setOpen(false) }}><span className="remap-source-icon">{row.icon}</span><strong>{row.name}</strong><small>{row.current ? row.effective : t('remap.original')}</small>{row.current !== 0 && <i aria-hidden="true" />}</button>)}</div></div>
+        })}{!visible.length && <p className="remap-empty">{t('remap.noResults')}</p>}</div>
+      </section>
+      {selected && <section className="remap-binding">
+        <span className="stick-eyebrow">{t('remap.selected')}</span>
+        <div className="remap-preview"><div><span className="remap-preview-icon">{selected.icon}</span><strong>{selected.name}</strong></div><span className="remap-preview-arrow" aria-hidden="true">→</span><div><span className="remap-preview-icon output">{selected.current ? selected.outputIcon : selected.icon}</span><strong>{selected.current ? selected.effective : selected.name}</strong></div></div>
+        <div className="remap-binding-label">{t('buttons.target')}</div>
+        {selected.known ? <KeySelect key={selected.id} value={selected.current} disabled={disabled} open={open} onToggle={() => { setCapture(null); setOpen(!open) }} onClose={() => setOpen(false)} onPick={selected.onPick} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable /> : <div className="remap-readonly">{selected.effective}<small>{t('remap.readonly')}</small></div>}
+        <div className={`remap-capture-panel${capture ? ' active' : ''}`}>
+          <div className="remap-capture-heading"><span>{t('remap.quickBind')}</span>{capture && <span className="remap-listening-dot" aria-hidden="true" />}</div>
+          <div className="remap-capture-actions">{capture ? <button type="button" className="remap-capture-cancel" onClick={() => { setCapture(null); setCaptureMessage(t('remap.captureCancelled')) }}><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>{t('remap.captureCancel')}<kbd>Esc</kbd></button> : <>{(['controller', 'keyboard'] as const).map(mode => <button type="button" className="remap-capture-choice" key={mode} aria-label={t(mode === 'keyboard' ? 'remap.captureKeyboard' : 'remap.captureController')} disabled={disabled || !selected.known} onClick={() => { setOpen(false); setCapture(mode) }}><span className="remap-capture-icon">{mode === 'keyboard' ? <MappingTypeIcon type="keyboard" size={24} /> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h8c2.1 0 3.4 1.6 3.9 3.7l1.1 5.2c.6 2.7-1.5 4-3.4 2.1L15 14H9l-2.6 3C4.5 19 2.4 17.6 3 14.9l1.1-5.2C4.6 7.6 5.9 6 8 6Z"/><path d="M8 8.8v4M6 10.8h4"/><circle cx="15.7" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="18" cy="11.8" r=".8" fill="currentColor" stroke="none"/></svg>}</span><span>{t(mode === 'keyboard' ? 'remap.keyboardLabel' : 'remap.controllerLabel')}</span></button>)}</>}</div>
+          <p className={`remap-capture-message${capture ? ' listening' : ''}`} role="status" aria-live="polite" title={t('remap.captureHint')}>{captureMessage || t('remap.captureShortHint')}</p>
+        </div>
+        <div className={`remap-binding-state${selected.current ? ' changed' : ''}`}><i />{t(selected.current ? 'remap.custom' : 'remap.original')}</div>
+        <button type="button" className="btn sm ghost remap-reset" disabled={disabled || !selected.known || !selected.current} onClick={() => { setCapture(null); selected.onPick(0); setOpen(false) }}>{t('remap.reset')}</button>
+        <p className="remap-apply-note">{t('remap.apply')}</p>
+      </section>}
     </div>
-  )
+  </section>
 }
 
 function ResetEverythingCard({ profile, fd, edit, onReload, notify }: {
@@ -2364,55 +2474,17 @@ function LjZonesCard({ points, onChange }: {
   const slider = (key: keyof LjStickZones, label: string): JSX.Element => (
     <Slider label={label} value={z[key]} min={0} max={1000} step={1} format={(v) => `${(v / 10).toFixed(1)}%`} onChange={(v) => apply({ [key]: v })} />
   )
-  const box = (key: keyof LjStickZones, label: string): JSX.Element => (
-    <label className="row" style={{ gap: 6, fontSize: 12 }}>
-      <span className="label">{label}</span>
-      <input
-        className="input"
-        style={{ width: 76 }}
-        type="number"
-        min={0}
-        max={100}
-        step={0.1}
-        value={Number((z[key] / 10).toFixed(1))}
-        onChange={(e) => {
-          const v = Number(e.target.value)
-          if (!Number.isFinite(v)) return
-          apply({ [key]: Math.round(Math.max(0, Math.min(100, v)) * 10) })
-        }}
-      />
-      <span style={{ color: 'var(--text-3)' }}>%</span>
-    </label>
-  )
   return (
-    <div className="card lj-zones-card">
-      <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.deadzone')}</span><h3>{t('sticks.steps01')}</h3></div><button className="btn sm" onClick={() => onChange(toPts(ljLinearCurve({ ...z, antiStart: 0, antiEnd: 1000 })))}>{t('sticks.physics')}</button></div>
-      <Hint>{t('lj.zoneHint')}</Hint>
+    <div className="lj-zone-sections"><div className="card lj-zones-card">
+      <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.inputLabel')}</span><h3>{t('sticks.inputTitle')}</h3></div><span className="pill">0.1%</span></div>
+      <p className="stick-intro">{t('sticks.inputHelp')}</p>
       <div className="stack lj-zone-primary" style={{ gap: 12, marginTop: 8 }}>
-        {slider('start', t('sticks.start'))}
-        {slider('end', t('sticks.end'))}
+        {slider('start', t('sticks.innerLabel'))}
+        {slider('end', t('sticks.outerLabel'))}
       </div>
-      <details className="stick-extra lj-zone-advanced">
-        <summary>{t('sticks.fineTune')}</summary>
-        <div className="stick-extra-body">
-        {slider('antiStart', t('sticks.antiStart'))}
-        {slider('antiEnd', t('sticks.antiEnd'))}
-      <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-        {box('start', t('sticks.nStart'))}
-        {box('end', t('sticks.nEnd'))}
-        {box('antiStart', t('sticks.nAntiStart'))}
-        {box('antiEnd', t('sticks.nAntiEnd'))}
+      </div><div className="card stick-output-card"><div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.outputLabel')}</span><h3>{t('sticks.outputTitle')}</h3></div></div><p className="stick-intro">{t('sticks.outputHelp')}</p>
+      <div className="stack" style={{ gap: 18 }}>{slider('antiStart', t('sticks.floorLabel'))}{slider('antiEnd', t('sticks.ceilingLabel'))}</div>
       </div>
-      <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-        <button className="choice-btn" onClick={() => apply({ start: 50, end: 1000, antiStart: 0, antiEnd: 1000 })}><span className="choice-label">{t('sticks.factory')}</span></button>
-        <button className="choice-btn" title={t('sticks.tAim')} onClick={() => apply({ end: 800 })}><span className="choice-label">{t('sticks.aimEnd')}</span></button>
-        <button className="choice-btn" title={t('sticks.tFlick')} onClick={() => apply({ end: 650 })}><span className="choice-label">{t('sticks.flickEnd')}</span></button>
-        <button className="choice-btn" title={t('sticks.tSnap')} onClick={() => apply({ antiStart: 80 })}><span className="choice-label">{t('sticks.antiSnap')}</span></button>
-        <button className="choice-btn" title={t('sticks.tMax')} onClick={() => apply({ antiStart: 150 })}><span className="choice-label">{t('sticks.antiMax')}</span></button>
-        <button className="choice-btn" title={t('sticks.tOff')} onClick={() => apply({ antiStart: 0, antiEnd: 1000 })}><span className="choice-label">{t('sticks.antiOff')}</span></button>
-      </div>
-        </div>
-      </details>
     </div>
   )
 }
@@ -2476,7 +2548,9 @@ function LjShapeCard({ shape, busy, onChange }: {
   )
 }
 
-function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther }: {
+function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, editor, onEditorChange }: {
+  editor?: CurveEditorDraft
+  onEditorChange: (draft: CurveEditorDraft) => void
   snap: LjSnapshot
   side: 0 | 1
   points: Array<{ x: number; y: number }>
@@ -2508,10 +2582,18 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther }: {
   if (!stick || points.length !== 8) return null
   const padPts = stick.curvePct.map(([x, y]) => ({ x: Math.round(x * 10), y: Math.round(y * 10) }))
   const dirty = JSON.stringify(points) !== JSON.stringify(padPts)
-  const zones = ljCurveZones(toPairs(points))
+  const validEditor = editor?.output === JSON.stringify(points) ? editor : undefined
+  const designPoints = validEditor?.points ?? points
+  const spline = validEditor?.spline ?? false
+  const stageCurve = (next: CurvePoint[], smooth = spline): void => {
+    const output = sampleLjDesign(next, smooth)
+    onEditorChange({ points: next.map(p => ({ ...p })), spline: smooth, output: JSON.stringify(output) })
+    onChange(output)
+  }
+  const zones = ljCurveZones(toPairs(designPoints))
   const setPoint = (i: number, axis: 'x' | 'y', v: number): void => {
     if (!Number.isFinite(v)) return
-    const next = points.map((p) => ({ ...p }))
+    const next = designPoints.map((p) => ({ ...p }))
     if (axis === 'x') {
       const lo = i > 0 ? next[i - 1].x : 0
       const hi = i < next.length - 1 ? next[i + 1].x : 1000
@@ -2519,11 +2601,11 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther }: {
     } else {
       next[i].y = Math.max(0, Math.min(1000, Math.round(v * 10)))
     }
-    onChange(next)
+    stageCurve(next)
   }
   const savePreset = (): void => {
     const name = nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName'))
-    setPresets((prev) => [{ name, pts: points.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
+    setPresets((prev) => [{ name, pts: designPoints.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
     setPresetNotice(t('sticks.curveSavedNotice').replace('{name}', name))
   }
   const renamePreset = (oldName: string, name: string): boolean => {
@@ -2535,18 +2617,37 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther }: {
     <div className="card lj-curve-card">
       <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.curve')}</span><h3>8 {t('sticks.points')}</h3></div><span className={`pill ${dirty ? 'warn' : 'good'}`}>{dirty ? t('sticks.differs') : t('sticks.matches')}</span></div>
       <Hint>{t('lj.stickHint')}</Hint>
-      <CurvePlot points={points} max={1000} overlay={padPts} onChange={(next) => onChange(next.map((p) => ({ ...p })))} />
+      <SplineControl enabled={spline} slots={8} onChange={enabled => stageCurve(designPoints, enabled)} /><div className="curve-edit-layout"><div className="curve-graph-panel"><CurvePlot spline={spline} height={320} points={designPoints} max={1000} overlay={points} onChange={next => stageCurve(next)} />
       <div className="row wrap" style={{ gap: 8, margin: '12px 0' }}>
         <button className="btn sm ghost" title={t('lj.copyOther')} onClick={onCopyToOther}>{t('sticks.copyCurve')}</button>
-        <button className="btn sm ghost" onClick={() => onChange(toPts(ljLinearCurve(zones)))}>{t('sticks.resetCurve')}</button>
-        <button className="btn sm ghost" disabled={!dirty} onClick={onReset}>{t('sticks.reload')}</button>
+        <button className="btn sm ghost" onClick={() => stageCurve(toPts(ljLinearCurve(zones)))}>{t('sticks.resetCurve')}</button>
+        <button className="btn sm ghost" disabled={!dirty} onClick={() => { onEditorChange({ points: padPts, spline: false, output: JSON.stringify(padPts) }); onReset() }}>{t('sticks.reload')}</button>
       </div>
-      <details className="stick-extra stick-curve-tools">
-        <summary>{t('sticks.presetsAndSaved')}</summary>
+      </div><section className="curve-point-editor">
+        <h4>{t('sticks.pointEditor')}</h4>
+        <div className="stick-extra-body">
+      <table className="tbl" style={{ marginTop: 8 }}>
+        <thead><tr><th>#</th><th>X</th><th>Y</th></tr></thead>
+        <tbody>
+          {designPoints.map((p, i) => (
+            <tr key={i}>
+              <td className="mono">{i + 1}</td>
+              <td><input className="input" type="number" min={0} max={100} step={0.1} value={Number((p.x / 10).toFixed(1))} onChange={(e) => setPoint(i, 'x', Number(e.target.value))} /></td>
+              <td><input className="input" type="number" min={0} max={100} step={0.1} value={Number((p.y / 10).toFixed(1))} onChange={(e) => setPoint(i, 'y', Number(e.target.value))} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="note" style={{ marginTop: 8 }}>
+        {t('sticks.hwPreview')} <span className="mono">{points.map((p) => `${ljPercentToWire(p.x / 10)}/${ljPercentToWire(p.y / 10)}`).join(' · ')}</span>
+      </div>
+        </div>
+      </section></div><div className="curve-preset-area"><section className="curve-presets-visible">
+        <h4>{t('sticks.presetsAndSaved')}</h4>
         <div className="stick-extra-body">
       <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
         {Object.entries(AIM_CURVES).map(([key, c]) => (
-          <button key={key} className="choice-btn" title={c.hint} onClick={() => onChange(toPts(ljSampleDesign(c.pts, zones)))}>
+          <button key={key} className="choice-btn" title={c.hint} onClick={() => stageCurve(toPts(ljSampleDesign(c.pts, zones)))}>
             <CurveMiniIcon points={c.pts} />
             <span className="choice-label">{c.label}</span>
           </button>
@@ -2563,34 +2664,15 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther }: {
         {presetNotice && <span className="saved-curve-notice" role="status">{presetNotice}</span>}
         {presets.length === 0 && <span className="saved-curve-empty">{t('sticks.noSavedCurves')}</span>}
         {presets.map((p) => (
-          <SavedCurvePreset key={p.name} preset={p} max={1000} onApply={() => onChange(p.pts.map((q) => ({ ...q })))} onRename={(name) => renamePreset(p.name, name)} onDelete={() => setPresets((prev) => prev.filter((q) => q.name !== p.name))} />
+          <SavedCurvePreset key={p.name} preset={p} max={1000} onApply={() => stageCurve(p.pts.map((q) => ({ ...q })))} onRename={(name) => renamePreset(p.name, name)} onDelete={() => setPresets((prev) => prev.filter((q) => q.name !== p.name))} />
         ))}
       </div>
       <div className="row wrap" style={{ gap: 8 }}>
         <button className="btn sm" disabled title={t('lj.fixedPoints')}>{t('sticks.addPoint')} (8/8)</button>
       </div>
         </div>
-      </details>
-      <details className="stick-extra stick-curve-tools">
-        <summary>{t('sticks.pointEditor')}</summary>
-        <div className="stick-extra-body">
-      <table className="tbl" style={{ marginTop: 8 }}>
-        <thead><tr><th>#</th><th>X</th><th>Y</th></tr></thead>
-        <tbody>
-          {points.map((p, i) => (
-            <tr key={i}>
-              <td className="mono">{i + 1}</td>
-              <td><input className="input" type="number" min={0} max={100} step={0.1} value={Number((p.x / 10).toFixed(1))} onChange={(e) => setPoint(i, 'x', Number(e.target.value))} /></td>
-              <td><input className="input" type="number" min={0} max={100} step={0.1} value={Number((p.y / 10).toFixed(1))} onChange={(e) => setPoint(i, 'y', Number(e.target.value))} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="note" style={{ marginTop: 8 }}>
-        {t('sticks.hwPreview')} <span className="mono">{points.map((p) => `${ljPercentToWire(p.x / 10)}/${ljPercentToWire(p.y / 10)}`).join(' · ')}</span>
+      </section>
       </div>
-        </div>
-      </details>
     </div>
   )
 }
@@ -2723,8 +2805,9 @@ export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
+  const [freshUndo, setFreshUndo] = useState<{ path: string | null; slot: number; model: string; bytes: Uint8Array; dirty: boolean; designs: Array<string | null>; modes: Record<string, boolean> } | null>(null)
   const [calibrationRunning, setCalibrationRunning] = useState(false)
-  const [tab, changeTab] = useState<'sticks' | 'device' | 'buttons' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
+  const [tab, changeTab] = useState<'sticks' | 'curves' | 'device' | 'buttons' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
   const setTab = (next: typeof tab): void => {
     if (calibrationRunning && next !== 'calibrate') { setErr(t('cal.web.leave')); return }
     changeTab(next)
@@ -2748,12 +2831,14 @@ export default function App(): JSX.Element {
   })
   // Free-point curve design (2–10 pts). The pad only stores 5, so this is a
   // design canvas — `quantized` is what actually gets written. Persisted per
-  // slot+stick so a half-finished shape survives a reload. Sampling is always
-  // straight-line: the pad interpolates its 5 slots linearly, so smoothing the
-  // design first would only invent values the hardware never sees.
+  // slot+stick so a half-finished shape survives a reload. Spline mode samples
+  // a bounded smooth design into the same five firmware slots.
   const [design, setDesign] = useState<Array<{ x: number; y: number }>>([])
+  const [splineModes, setSplineModes] = useState<Record<string, boolean>>({})
+  const [ljCurveEditors, setLjCurveEditors] = useState<Record<string, CurveEditorDraft>>({})
+  const splineKey = `${connPath}.${slot}.${which}`
+  const spline = splineModes[splineKey] ?? false
   // Which remap row's icon dropdown is open (row key, or null).
-  const [bindOpen, setBindOpen] = useState<string | null>(null)
   // Per-stick output lock: locked sticks are forced back to normal stick
   // output on every Write, so Mouse output can never reach the pad again.
   const [outLock, setOutLock] = useState<[boolean, boolean]>(() => {
@@ -3107,6 +3192,7 @@ export default function App(): JSX.Element {
       }
       const res = await api().writeProfile(slot, bytesToB64(blob), modelLen)
       if (res.verified) {
+        setFreshUndo(null)
         const liveNow = info?.currentProfile
         setSavedAt({ slot, at: Date.now() })
         setDirty(false)
@@ -3319,7 +3405,7 @@ export default function App(): JSX.Element {
     }
   }, [design, designKey])
 
-  const quantized = design.length >= 2 ? resampleCurve(design) : pts
+  const quantized = design.length >= 2 ? sampleDesign(design, spline) : pts
   const locked = connected && (!model || model.support !== 'full')
   const modelId = model?.id ?? 'G7ProCE'
   const modelLen = model && model.profileLength > 0 ? model.profileLength : PROFILE_LENGTH
@@ -3374,16 +3460,42 @@ export default function App(): JSX.Element {
    * the sampled design already equals the working copy, so loading and
    * no-change touches never dirty the profile.
    */
-  function stageDesign(next: Array<{ x: number; y: number }>): void {
+  function stageDesign(next: Array<{ x: number; y: number }>, smooth = spline): void {
     setDesign(next)
     if (!pkt || next.length < 2) return
-    const q = resampleCurve(next)
-    const cur = stick.curve(pkt)
-    if (q.length === cur.length && q.every((p, i) => p.x === cur[i].x && p.y === cur[i].y)) return
+    const q = sampleDesign(next, smooth)
+    if (stick.matchesCurveIdentity(pkt, q)) return
     edit(() => {
       stick.setCurve(pkt, q.map((p) => ({ ...p })))
       stick.markCurveIdentity(pkt)
     })
+  }
+
+  function stageCleanProfile(): void {
+    if (!blob || !connected || busy || locked || calibrationRunning || !['G7ProCE', 'T3CE'].includes(modelId)) return
+    try {
+      const backup = blob.slice()
+      const clean = buildCleanProfile(backup, modelId)
+      const designs = [0, 1].map(side => { try { return localStorage.getItem(`sticklab.design.${slot}.${side}`) } catch { return null } })
+      setFreshUndo({ path: connPath, slot, model: modelId, bytes: backup, dirty, designs, modes: { ...splineModes } })
+      for (const side of [0, 1]) { try { localStorage.removeItem(`sticklab.design.${slot}.${side}`) } catch { /* session still resets */ } }
+      setSplineModes(prev => ({ ...prev, [`${connPath}.${slot}.0`]: false, [`${connPath}.${slot}.1`]: false }))
+      setBlob(clean)
+      setDirty(true)
+      setLoadId(n => n + 1)
+      setMsg(t('clean.staged'))
+      setErr(null)
+    } catch (e) { setErr((e as Error).message) }
+  }
+  function undoCleanProfile(): void {
+    if (!freshUndo || freshUndo.path !== connPath || freshUndo.slot !== slot || freshUndo.model !== modelId || busy || calibrationRunning) return
+    freshUndo.designs.forEach((value, side) => { try { const key = `sticklab.design.${slot}.${side}`; if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value) } catch { /* restore bytes even without storage */ } })
+    setSplineModes(freshUndo.modes)
+    setBlob(freshUndo.bytes.slice())
+    setDirty(freshUndo.dirty)
+    setLoadId(n => n + 1)
+    setFreshUndo(null)
+    setMsg(t('clean.undone'))
   }
 
   function saveCurrentCurvePreset(): void {
@@ -3414,6 +3526,10 @@ export default function App(): JSX.Element {
             <button type="button" className={`nav-item${tab === 'sticks' ? ' active' : ''}`} onClick={() => setTab('sticks')}>
               <StickSideIcon side="left" size={17} />
               {t('nav.sticks')}
+            </button>
+            <button type="button" className={`nav-item${tab === 'curves' ? ' active' : ''}`} onClick={() => setTab('curves')}>
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M3 3v14h14"/><path d="M5 14c7 0 3-9 10-9"/></svg>
+              {t('nav.curves')}
             </button>
             <button type="button" className={`nav-item${tab === 'device' ? ' active' : ''}`} onClick={() => setTab('device')}>
               <DeviceIcon kind="rate" size={17} />
@@ -3656,36 +3772,29 @@ export default function App(): JSX.Element {
                 <span className="pill">{model?.marketingName} · {(['Main', 'Sub1', 'Sub2'] as const)[ljSlot]}</span>
               </div>
               {!ljSnap && <div className="msg"><h3>{ljBusy ? t('lj.reading') : t('msg.loading')}</h3></div>}
-              {ljSnap && tab === 'sticks' && (() => {
+              {ljSnap && (tab === 'sticks' || tab === 'curves') && (() => {
                 const side = (which === 0 ? 0 : 1) as 0 | 1
                 const other = (side === 0 ? 1 : 0) as 0 | 1
                 const pts = ljStickPoints(side)
-                return (
-                  <div className="two lj-stick-workspace" style={{ alignItems: 'start' }}>
-                    <div className="stack" style={{ gap: 16 }}>
-                      <LjLiveCard
-                  live={ljLive}
-                  windows={([0, 1] as const).map((s) => {
-                    const z = ljCurveZones(toPairs(ljDraft.sticks[s] ?? ljPadGrid(s)))
-                    return { begin: z.start, end: z.end, beginAnti: z.antiStart }
-                  })}
-                />
-                      <LjZonesCard points={pts} onChange={(next) => stageLjStick(side, next)} />
-                      <LjOuterCard points={pts} onChange={(next) => stageLjStick(side, next)} />
-                    </div>
-                    <div className="stack" style={{ gap: 16 }}>
-                      <LjCurveCard
+                return tab === 'curves' ? <div className="curves-workspace"><div className="tuning-page-heading"><h2>{t('nav.curves')}</h2><p>{t('sticks.curvesHelp')}</p></div><LjCurveCard
+                        editor={ljCurveEditors[`${connPath}.${ljSlot}.${side}`]}
+                        onEditorChange={draft => setLjCurveEditors(prev => ({ ...prev, [`${connPath}.${ljSlot}.${side}`]: draft }))}
                         snap={ljSnap}
                         side={side}
                         points={pts}
                         onChange={(next) => stageLjStick(side, next)}
                         onReset={() => stageLjStick(side, null)}
                         onCopyToOther={() => stageLjStick(other, pts.map((p) => ({ ...p })))}
-                      />
-                      <LjShapeCard shape={ljDraft.shapes[side] ?? ljPadShape(side)} busy={ljBusy} onChange={(code) => stageLjShape(side, code)} />
-                    </div>
-                  </div>
-                )
+                      /></div> : <>
+                  <div className="tuning-page-heading"><h2>{t('sticks.cleanTitle')}</h2><p>{t('sticks.cleanHelp')}</p></div>
+                  <div className="stick-clean-workspace"><div className="stack stick-clean-monitor"><LjLiveCard
+                  live={ljLive}
+                  windows={([0, 1] as const).map((s) => {
+                    const z = ljCurveZones(toPairs(ljDraft.sticks[s] ?? ljPadGrid(s)))
+                    return { begin: z.start, end: z.end, beginAnti: z.antiStart }
+                  })}
+                /><LjOuterCard points={pts} onChange={(next) => stageLjStick(side, next)} /><LjShapeCard shape={ljDraft.shapes[side] ?? ljPadShape(side)} busy={ljBusy} onChange={(code) => stageLjShape(side, code)} /></div><div className="stack stick-clean-controls"><LjZonesCard points={pts} onChange={(next) => stageLjStick(side, next)} /></div></div>
+                </>
               })()}
               {ljSnap && tab === 'device' && (
                 <div className="stack" style={{ gap: 16 }}>
@@ -3699,13 +3808,7 @@ export default function App(): JSX.Element {
               {ljSnap && tab === 'buttons' && (
                 <div className="buttons-workspace lj-buttons-workspace">
                   {ljZones && <LjTriggerCard value={ljZones} />}
-                  <div className="card buttons-map-card">
-                    <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('buttons.title')}</span><h3>{t('buttons.source')} → {t('buttons.effective')}</h3></div><LjKeyIcon id={1} size={24} /></div>
-                    <details className="buttons-help"><summary><LjKeyIcon id={11} size={16} />{t('buttons.help')}</summary><div className="hint">{t('lj.bindHint')}</div></details>
-                    <table className="tbl" style={{ marginTop: 8 }}>
-                      <thead><tr><th><span className="row table-heading-icon"><LjKeyIcon id={11} size={16} />{t('buttons.source')}</span></th><th><span className="row table-heading-icon"><LjKeyIcon id={12} size={16} />{t('buttons.target')}</span></th><th><span className="row table-heading-icon"><LjKeyIcon id={1} size={16} />{t('buttons.effective')}</span></th></tr></thead>
-                      <tbody>
-                        {(() => {
+                  {(() => {
                           const ljOptions = [
                             { value: 0, label: t('buttons.unmapped') },
                             ...ljSnap.buttons.map((b) => ({ value: b.id, label: b.label })),
@@ -3724,7 +3827,8 @@ export default function App(): JSX.Element {
                             ...[24, 25, 26, 27].map((id) => ({ id, phys: LJ_PHYSICAL[id] ?? '' })),
                             ...ljSnap.buttons.filter((b) => b.id !== 24 && b.id !== 25 && b.id !== 26 && b.id !== 27).map((b) => ({ id: b.id, phys: '' }))
                           ]
-                          return rows.map((row) => {
+
+                    return <RemapWorkspace captureFamily="leadjoy" disabled={ljBusy} help={t('lj.bindHint')} options={ljOptions} getLabel={ljLabel} renderIcon={ljIcon} rows={rows.map(row => {
                             const snap = ljSnap.buttons.find((b) => b.id === row.id)
                             const staged = ljDraft.buttons[row.id]
                             const padMap = snap?.map && snap.map.t !== 0 ? snap.map : null
@@ -3733,34 +3837,10 @@ export default function App(): JSX.Element {
                             const known = current === null || [LJ_MAP_GAMEPAD, LJ_MAP_KEYBOARD, LJ_MAP_MOUSE].includes(current.t)
                             const label = current ? (ljTargetLabel(current) ?? t('buttons.unmapped')) : t('buttons.unmapped')
                             const sourceName = row.phys ? `${row.phys} · ${snap?.label ?? ''}` : (snap?.label ?? `ID ${row.id}`)
-                            return (
-                              <tr key={row.id}>
-                                <td><span className="row" style={{ gap: 7, alignItems: 'center' }}><LjKeyIcon id={row.id} />{sourceName}</span></td>
-                                <td>
-                                  {known ? (
-                                    <KeySelect
-                                      value={current ? ljEncodeTarget(current) : 0}
-                                      disabled={ljBusy}
-                                      open={bindOpen === `lj-${row.id}`}
-                                      onToggle={() => setBindOpen(bindOpen === `lj-${row.id}` ? null : `lj-${row.id}`)}
-                                      onClose={() => setBindOpen(null)}
-                                      onPick={(v) => stageLjButton(row.id, v === 0 ? null : ljDecodeTarget(v))}
-                                      options={ljOptions}
-                                      getLabel={ljLabel}
-                                      renderIcon={ljIcon}
-                                    />
-                                  ) : (
-                                    <span className="mono">{label}</span>
-                                  )}
-                                </td>
-                                <td><span className="row" style={{ gap: 7, alignItems: 'center' }}>{current && ljIcon(ljEncodeTarget(current))}{label}</span></td>
-                              </tr>
-                            )
-                          })
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
+
+                      return { id: String(row.id), name: sourceName, icon: <LjKeyIcon id={row.id} size={27} />, current: current ? ljEncodeTarget(current) : 0, effective: label, outputIcon: current ? ljIcon(ljEncodeTarget(current)) : null, extra: [24, 25, 26, 27].includes(row.id), known, onPick: (v: number) => stageLjButton(row.id, v === 0 ? null : ljDecodeTarget(v)) }
+                    })} />
+                  })()}
                 </div>
               )}
             </>
@@ -3787,10 +3867,10 @@ export default function App(): JSX.Element {
                 <div style={{ flex: 1 }} />
                 <span className="pill">{resBits}-bit · {bitsToLevels(resBits).toLocaleString()} {t('device.levels')}</span>
               </div>
-              {tab === 'sticks' && (
-              <div className="two stick-workspace" style={{ alignItems: 'start' }}>
-                <div className="stack" style={{ gap: 16 }}>
-                  <div className="card stick-live-card">
+              {tab === 'sticks' && <>
+                <div className="tuning-page-heading"><h2>{t('sticks.cleanTitle')}</h2><p>{t('sticks.cleanHelp')}</p></div>
+                <div className="stick-clean-workspace">
+                  <div className="stack stick-clean-monitor"><div className="card stick-live-card">
                     <h3>{t('sticks.live')}</h3>
                     <Hint>{t('sticks.liveNote')} {t('sticks.liveHint')}</Hint>
                     <div className="stick-live-visual"><StickCross
@@ -3804,98 +3884,7 @@ export default function App(): JSX.Element {
                       <div className={`stick-readout${which === 0 ? ' selected' : ''}`}><span>{t('cal.left')}</span><strong>{live?.lx ?? '—'}<i>,</i>{live?.ly ?? '—'}</strong></div>
                       <div className={`stick-readout${which === 1 ? ' selected' : ''}`}><span>{t('cal.right')}</span><strong>{live?.rx ?? '—'}<i>,</i>{live?.ry ?? '—'}</strong></div>
                     </div>
-                  </div>
-
-
-                  <div className="card stick-primary-card">
-                    <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.deadzone')}</span><h3>{t('sticks.steps01')}</h3></div><button className="btn sm" onClick={() => edit(() => stick.applyPhysics(pkt))}>{t('sticks.physics')}</button></div>
-                    <p className="stick-intro">{t('sticks.dzHint')}</p>
-                    <div className="stick-primary-sliders">
-                      <Slider label={t('sticks.start')} value={dz.begin / 10} min={0} max={20} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label={t('sticks.end')} value={dz.end / 10} min={10} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                    </div>
-                    <div className="stick-value-row"><div><span>{t('sticks.start')}</span><strong>{(dz.begin / 10).toFixed(1)}%</strong></div><div><span>{t('sticks.end')}</span><strong>{(dz.end / 10).toFixed(1)}%</strong></div></div>
-                  </div>
-
-                  <details className="card stick-extra">
-                    <summary>{t('sticks.fineTune')}</summary>
-                    <div className="stick-extra-body">
-                    <div className="stack" style={{ gap: 12, marginTop: 8 }}>
-                      <Slider label={t('sticks.antiStart')} value={dz.beginAnti / 10} min={0} max={50} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label={t('sticks.antiEnd')} value={dz.endAnti / 10} min={50} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), endAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                    </div>
-                    <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-                      {(
-                        [
-                          { label: t('sticks.nStart'), key: 'begin', value: dz.begin / 10 },
-                          { label: t('sticks.nEnd'), key: 'end', value: dz.end / 10 },
-                          { label: t('sticks.nAntiStart'), key: 'beginAnti', value: dz.beginAnti / 10 },
-                          { label: t('sticks.nAntiEnd'), key: 'endAnti', value: dz.endAnti / 10 }
-                        ] as const
-                      ).map((f) => (
-                        <label key={f.key} className="row" style={{ gap: 6, fontSize: 12 }}>
-                          <span className="label">{f.label}</span>
-                          <input
-                            className="input"
-                            style={{ width: 76 }}
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            value={Number(f.value.toFixed(1))}
-                            onChange={(e) => {
-                              const v = Math.max(0, Math.min(100, Number(e.target.value)))
-                              if (!Number.isFinite(v)) return
-                              edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), [f.key]: Math.round(v * 10) }))
-                            }}
-                          />
-                          <span style={{ color: 'var(--text-3)' }}>%</span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-                      <button className="btn sm" onClick={() => edit(() => stick.applyPhysics(pkt))}>{t('sticks.physics')}</button>
-                      <button className="choice-btn" onClick={() => edit(() => stick.setDeadzone(pkt, { begin: 50, end: 1000, beginAnti: 0, endAnti: 1000 }))}><span className="choice-label">{t('sticks.factory')}</span></button>
-                      <button className="choice-btn" title={t('sticks.tAim')} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: 800 }))}><span className="choice-label">{t('sticks.aimEnd')}</span></button>
-                      <button className="choice-btn" title={t('sticks.tFlick')} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: 650 }))}><span className="choice-label">{t('sticks.flickEnd')}</span></button>
-                      <button className="choice-btn" title={t('sticks.tSnap')} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 80 }))}><span className="choice-label">{t('sticks.antiSnap')}</span></button>
-                      <button className="choice-btn" title={t('sticks.tMax')} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 150 }))}><span className="choice-label">{t('sticks.antiMax')}</span></button>
-                      <button className="choice-btn" title={t('sticks.tOff')} onClick={() => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: 0, endAnti: 1000 }))}><span className="choice-label">{t('sticks.antiOff')}</span></button>
-                      <button
-                        className="btn sm ghost"
-                        title={t('sticks.watchTitle')}
-                        disabled={!live || measuring !== null}
-                        onClick={() => {
-                          wanderRef.current = 0
-                          setMeasuring({ left: 10, suggestion: null })
-                        }}
-                      >
-                        {measuring ? `${t('sticks.measuring')} ${measuring.left}s` : t('sticks.centerGuard')}
-                      </button>
-                    </div>
-                    {measuring?.suggestion !== null && measuring?.suggestion !== undefined && (
-                      <div className="note warn" style={{ marginTop: 8 }}>
-                        {t('sticks.suggest').replace('{dev}', String(measuring.suggestion.dev))}{' '}
-                        <button
-                          className="btn sm primary"
-                          style={{ marginLeft: 8 }}
-                          onClick={() => {
-                            const pct10 = measuring.suggestion!.pct10
-                            edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: pct10 }))
-                            setMeasuring(null)
-                          }}
-                        >
-                          {t('sticks.setStart').replace('{pct}', String(measuring.suggestion.pct10 / 10))}
-                        </button>{' '}
-                        <button className="btn sm ghost" onClick={() => setMeasuring(null)}>{t('common.dismiss')}</button>
-                      </div>
-                    )}
-                    </div>
-                  </details>
-
-
-                  <details className="card stick-extra">
-                    <summary>{t('sticks.outer')}</summary>
+                  </div><section className="card stick-visible-section">
                     <div className="stick-extra-body">
                     <h3>{t('sticks.outer')} — {outerUnlimited ? t('sticks.noLimitTitle') : t('sticks.custom')}</h3>
                     <Hint>{t('sticks.outerHint')}</Hint>
@@ -3931,13 +3920,63 @@ export default function App(): JSX.Element {
                       </div>
                     )}
                     </div>
-                  </details>
+                  </section><section className="card stick-visible-section">
+                    <div className="stick-extra-body">
+                    <h3>{t('sticks.shape')}</h3>
+                    <Hint>{t('sticks.shapeHint')}</Hint>
+                    <div className="stack" style={{ gap: 8 }}>
+                      {(
+                        [
+                          { key: 'round', hintKey: 'sticks.shapeHintRound' },
+                          { key: 'square', hintKey: 'sticks.shapeHintRaw' }
+                        ] as const
+                      ).map((s) => {
+                        const active = stick.enabled(pkt) && stick.squareGate(pkt) === (s.key === 'square')
+                        const label = s.key === 'round' ? t('sticks.shapeRound') : t('sticks.shapeRaw')
+                        return (
+                          <button
+                            key={s.key}
+                            className={`choice-btn${active ? ' active' : ''}`}
+                            title={t(s.hintKey)}
+                            onClick={() => {
+                              edit(() => {
+                                stick.setEnabled(pkt, true)
+                                stick.setSquareGate(pkt, s.key === 'square')
+                              })
+                            }}
+                          >
+                            <span className="choice-label">{label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {stick.isProfileBypassed(pkt) && (
+                      <div className="note" style={{ marginTop: 8 }}>{t('sticks.shapeBypass')}</div>
+                    )}
+                    </div>
+                  </section></div>
+                  <div className="stack stick-clean-controls"><div className="card stick-primary-card">
+                    <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.inputLabel')}</span><h3>{t('sticks.inputTitle')}</h3></div><span className="pill">0.1%</span></div>
+                    <p className="stick-intro">{t('sticks.inputHelp')}</p>
+                    <div className="stick-primary-sliders">
+                      <Slider label={t('sticks.innerLabel')} value={dz.begin / 10} min={0} max={20} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                      <Slider label={t('sticks.outerLabel')} value={dz.end / 10} min={10} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                    </div>
+
+                  </div><div className="card stick-output-card"><div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.outputLabel')}</span><h3>{t('sticks.outputTitle')}</h3></div></div><p className="stick-intro">{t('sticks.outputHelp')}</p>                    <div className="stack" style={{ gap: 12, marginTop: 8 }}>
+                      <Slider label={t('sticks.floorLabel')} value={dz.beginAnti / 10} min={0} max={50} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                      <Slider label={t('sticks.ceilingLabel')} value={dz.endAnti / 10} min={50} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), endAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
+                    </div>
+</div></div>
                 </div>
-                <div className="stack" style={{ gap: 16 }}>
-                  <div className="card stick-curve-card">
+              </>}
+              {tab === 'curves' && <div className="curves-workspace">
+                <div className="tuning-page-heading"><h2>{t('nav.curves')}</h2><p>{t('sticks.curvesHelp')}</p></div>
+<div className="card stick-curve-card">
                     <h3>{t('sticks.curve')} — {design.length} {t('sticks.points')}</h3>
                     <Hint>{t('sticks.curveHint')}</Hint>
-                    <CurvePlot
+                    <SplineControl enabled={spline} slots={5} onChange={enabled => { setSplineModes(prev => ({ ...prev, [splineKey]: enabled })); stageDesign(design.length >= 2 ? design : padCurve, enabled) }} />
+<div className="curve-edit-layout"><div className="curve-graph-panel"><CurvePlot spline={spline} height={320}
                       points={design.length >= 2 ? design : padCurve}
                       onChange={(next) => stageDesign(next)}
                       onAddPoint={(point) => {
@@ -3951,17 +3990,6 @@ export default function App(): JSX.Element {
                       overlay={quantized}
                     />
                     <div className="curve-edit-hint"><span className="curve-hint-symbol">↗</span><span>{t('sticks.curveClickHint')}</span></div>
-                    <div className="curve-starters">
-                      <div className="curve-starters-heading"><span>{t('sticks.curveQuickStart')}</span><span>{t('sticks.curve')} · {design.length}/{DESIGN_MAX_POINTS}</span></div>
-                      <div className="curve-starter-grid">
-                        {Object.entries(AIM_CURVES).slice(0, 4).map(([key, curve]) => (
-                          <button key={key} className="curve-starter" title={curve.hint} onClick={() => stageDesign(curve.pts.map((p) => ({ ...p })))}>
-                            <CurveMiniIcon points={curve.pts} />
-                            <span>{curve.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                     <div className="row spread stick-curve-status">
                       <span>{t('sticks.curve')}</span>
                       <span className={`pill ${design.length === padCurve.length && design.every((p, i) => p.x === padCurve[i]?.x && p.y === padCurve[i]?.y) ? 'good' : 'warn'}`}>
@@ -3973,8 +4001,30 @@ export default function App(): JSX.Element {
                       <div style={{ flex: 1 }} />
                       <button className="btn sm ghost" disabled={busy} onClick={() => void reloadCurveFromPad()}>{t('sticks.reload')}</button>
                     </div>
-                    <details className="stick-extra stick-curve-tools">
-                      <summary>{t('sticks.presetsAndSaved')}</summary>
+                    </div><section className="curve-point-editor">
+                      <h4>{t('sticks.pointEditor')}</h4>
+                      <div className="stick-extra-body">
+                    <table className="tbl" style={{ marginTop: 8 }}>
+                      <thead><tr><th>#</th><th>X</th><th>Y</th><th /></tr></thead>
+                      <tbody>
+                        {design.map((p, i) => (
+                          <tr key={i}>
+                            <td className="mono">{i + 1}</td>
+                            <td><input className="input" type="number" min={0} max={255} value={p.x} onChange={(e) => { const next = design.map((q) => ({ ...q })); const lo = i > 0 ? next[i - 1].x : 0; const hi = i < next.length - 1 ? next[i + 1].x : 255; next[i].x = Math.max(lo, Math.min(hi, Math.max(0, Math.min(255, Number(e.target.value))))); stageDesign(next) }} /></td>
+                            <td><input className="input" type="number" min={0} max={255} value={p.y} onChange={(e) => { const next = design.map((q) => ({ ...q })); next[i].y = Math.max(0, Math.min(255, Number(e.target.value))); stageDesign(next) }} /></td>
+                            <td>
+                              <button className="btn sm ghost" disabled={design.length <= DESIGN_MIN_POINTS} title={t('sticks.removePoint')} onClick={() => stageDesign(design.filter((_, j) => j !== i))}>−</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="note" style={{ marginTop: 8 }}>
+                      {t('sticks.hwPreview')} <span className="mono">{quantized.map((q) => `${q.x}/${q.y}`).join(' · ')}</span>
+                    </div>
+                      </div>
+                    </section></div><div className="curve-preset-area"><section className="curve-presets-visible">
+                      <h4>{t('sticks.presetsAndSaved')}</h4>
                       <div className="stick-extra-body">
                     <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
                       {Object.entries(AIM_CURVES).map(([key, c]) => (
@@ -4019,73 +4069,10 @@ export default function App(): JSX.Element {
                       </button>
                     </div>
                       </div>
-                    </details>
-                    <details className="stick-extra stick-curve-tools">
-                      <summary>{t('sticks.pointEditor')}</summary>
-                      <div className="stick-extra-body">
-                    <table className="tbl" style={{ marginTop: 8 }}>
-                      <thead><tr><th>#</th><th>X</th><th>Y</th><th /></tr></thead>
-                      <tbody>
-                        {design.map((p, i) => (
-                          <tr key={i}>
-                            <td className="mono">{i + 1}</td>
-                            <td><input className="input" type="number" min={0} max={255} value={p.x} onChange={(e) => { const next = design.map((q) => ({ ...q })); const lo = i > 0 ? next[i - 1].x : 0; const hi = i < next.length - 1 ? next[i + 1].x : 255; next[i].x = Math.max(lo, Math.min(hi, Math.max(0, Math.min(255, Number(e.target.value))))); stageDesign(next) }} /></td>
-                            <td><input className="input" type="number" min={0} max={255} value={p.y} onChange={(e) => { const next = design.map((q) => ({ ...q })); next[i].y = Math.max(0, Math.min(255, Number(e.target.value))); stageDesign(next) }} /></td>
-                            <td>
-                              <button className="btn sm ghost" disabled={design.length <= DESIGN_MIN_POINTS} title={t('sticks.removePoint')} onClick={() => stageDesign(design.filter((_, j) => j !== i))}>−</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="note" style={{ marginTop: 8 }}>
-                      {t('sticks.hwPreview')} <span className="mono">{quantized.map((q) => `${q.x}/${q.y}`).join(' · ')}</span>
+                    </section>
                     </div>
-                      </div>
-                    </details>
                   </div>
-
-
-                  <details className="card stick-extra">
-                    <summary>{t('sticks.shape')}</summary>
-                    <div className="stick-extra-body">
-                    <h3>{t('sticks.shape')}</h3>
-                    <Hint>{t('sticks.shapeHint')}</Hint>
-                    <div className="stack" style={{ gap: 8 }}>
-                      {(
-                        [
-                          { key: 'round', hintKey: 'sticks.shapeHintRound' },
-                          { key: 'square', hintKey: 'sticks.shapeHintRaw' }
-                        ] as const
-                      ).map((s) => {
-                        const active = stick.enabled(pkt) && stick.squareGate(pkt) === (s.key === 'square')
-                        const label = s.key === 'round' ? t('sticks.shapeRound') : t('sticks.shapeRaw')
-                        return (
-                          <button
-                            key={s.key}
-                            className={`choice-btn${active ? ' active' : ''}`}
-                            title={t(s.hintKey)}
-                            onClick={() => {
-                              edit(() => {
-                                stick.setEnabled(pkt, true)
-                                stick.setSquareGate(pkt, s.key === 'square')
-                              })
-                            }}
-                          >
-                            <span className="choice-label">{label}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {stick.isProfileBypassed(pkt) && (
-                      <div className="note" style={{ marginTop: 8 }}>{t('sticks.shapeBypass')}</div>
-                    )}
-                    </div>
-                  </details>
-
-                </div>
-              </div>
-              )}
+              </div>}
               {tab === 'device' && (
               <div className="two device-workspace" style={{ alignItems: 'start' }}>
                 <div className="stack" style={{ gap: 16 }}>
@@ -4206,18 +4193,23 @@ export default function App(): JSX.Element {
               )}
             </>
           )}
+          {tab === 'device' && connected && profile && !isLj && ['G7ProCE', 'T3CE'].includes(modelId) && <section className="card clean-profile-card">
+            <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('clean.eyebrow').replace('{slot}', String(slot))}</span><h3>{t('clean.title')}</h3></div></div>
+            <p>{t('clean.scope')}</p>
+            <div className="clean-profile-summary"><span>{t('clean.sticks')}</span><span>{t('clean.bindings')}</span><span>{t('clean.other')}</span></div>
+            <p className="clean-profile-detail">{t('clean.limits')}</p>
+            <div className="row wrap" style={{ gap: 10 }}><button type="button" className="btn" disabled={busy || locked || calibrationRunning} onClick={stageCleanProfile}>{t('clean.action')}</button>{freshUndo?.path === connPath && freshUndo?.slot === slot && freshUndo?.model === modelId && <button type="button" className="btn ghost" disabled={busy || calibrationRunning} onClick={undoCleanProfile}>{t('clean.undo')}</button>}</div>
+          </section>}
           {tab === 'buttons' && connected && profile && (
             <>
-            <div className="buttons-workspace">
-            <TriggerDeadzoneCard profile={profile} edit={edit} />
-            <div className="card buttons-map-card">
-              <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('buttons.title')}</span><h3>{t('buttons.source')} → {t('buttons.effective')}</h3></div><KeyIcon value={9} size={24} /></div>
-              <details className="buttons-help"><summary><KeyIcon value={14} size={16} />{t('buttons.help')}</summary><div className="hint">{t('buttons.hint')}<br /><br />{t('buttons.backs')}{modelId === 'G7ProCE' && (<><br /><br />{t('buttons.backsExtra')}</>)}{modelId === 'T3CE' && (<><br /><br />{t('buttons.frontExtra')}<br /><br />{t('buttons.tExtra')}</>)}</div></details>
-              <table className="tbl" style={{ marginTop: 8 }}>
-                <thead><tr><th><span className="row table-heading-icon"><KeyIcon value={13} size={16} />{t('buttons.source')}</span></th><th><span className="row table-heading-icon"><KeyIcon value={14} size={16} />{t('buttons.target')}</span></th><th><span className="row table-heading-icon"><KeyIcon value={9} size={16} />{t('buttons.effective')}</span></th></tr></thead>
-                <tbody>
-                  {([
-                    ...STANDARD_BUTTONS.map((name, i) => ({ name: keyLabel(i + 1), value: i + 1, pkt: profile.buttons[i] ?? null as Packet | null })),
+            <div className="buttons-workspace gamesir-buttons-workspace">
+            <TriggerSettings profile={profile} edit={edit} disabled={busy || locked || calibrationRunning} />
+            <RemapWorkspace
+              captureFamily="gamesir"
+              disabled={busy || locked}
+              help={<>{t('buttons.hint')}<br /><br />{t('buttons.backs')}{modelId === 'G7ProCE' && (<><br /><br />{t('buttons.backsExtra')}</>)}{modelId === 'T3CE' && (<><br /><br />{t('buttons.frontExtra')}<br /><br />{t('buttons.tExtra')}</>)}</>}
+              rows={([
+                ...STANDARD_BUTTONS.map((name, i) => ({ name: keyLabel(i + 1), value: i + 1, pkt: profile.buttons[i] ?? null as Packet | null })),
                     ...(profile.functionKeys[0] && profile.functionKeys[0].length === 169
                       ? [{ name: 'FL1 · L4', value: 17, tag: 'L4', pkt: profile.functionKeys[0] as Packet | null }]
                       : []),
@@ -4259,31 +4251,14 @@ export default function App(): JSX.Element {
                     ...(modelId === 'T3CE' && profile.functionKeys[8] && profile.functionKeys[8].length === 169
                       ? [{ name: 'T3', value: 17, tag: 'T3', pkt: profile.functionKeys[8] as Packet | null }]
                       : [])
-                  ] as Array<{ name: string; value: number; tag?: string; pkt: Packet | null }>).map((row) => {
-                    const pkt = row.pkt
-                    if (!pkt) return null
-                    const values = button.mapValues(pkt)
-                    const current = values.find((v) => v !== 0) ?? 0
-                    return (
-                      <tr key={row.name}>
-                        <td><span className="row" style={{ gap: 7, alignItems: 'center' }}><KeyIcon value={row.value} tag={row.tag} />{row.name}</span></td>
-                        <td>
-                          <KeySelect
-                            value={current}
-                            disabled={busy || locked}
-                            open={bindOpen === row.name}
-                            onToggle={() => setBindOpen(bindOpen === row.name ? null : row.name)}
-                            onClose={() => setBindOpen(null)}
-                            onPick={(v) => edit(() => button.setMap(pkt, [v, 0, 0]))}
-                          />
-                        </td>
-                        <td><span className="row" style={{ gap: 7, alignItems: 'center' }}>{current !== 0 && <KeyIcon value={current} />}{displayMapping(values)}</span></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  ] as Array<{ name: string; value: number; tag?: string; pkt: Packet | null }>).flatMap((row, index) => {
+                const pkt = row.pkt
+                if (!pkt) return []
+                const values = button.mapValues(pkt)
+                const current = values.find(v => v !== 0) ?? 0
+                return [{ id: row.name, name: row.name, icon: <KeyIcon value={row.value} tag={row.tag} size={27} />, current, effective: displayMapping(values), outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: index >= STANDARD_BUTTONS.length, known: true, onPick: (v: number) => edit(() => button.setMap(pkt, [v, 0, 0])) }]
+              })}
+            />
             </div>
             </>
           )}
