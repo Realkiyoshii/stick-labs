@@ -12,7 +12,7 @@ import { ljReadButtonTable, ljReadMainSnapshot, ljReadSnapshot, ljWriteButtonVer
 import type { LjButtonTarget, LjStickPatch } from '../shared/leadjoy'
 import { ljButtonWriteRecord } from '../shared/leadjoy'
 import { steamInfo, exportApexDeadzones, listInstalledGames, exportDeadzonesToGames } from './steam'
-import { PROFILE_LENGTH } from '../shared/protocol'
+import { PROFILE_LENGTH, isFineCalibrationStatus } from '../shared/protocol'
 import { runDeepPoll } from './deeppoll'
 
 const controller = new Controller(new Transport(), discover)
@@ -37,8 +37,28 @@ function send(channel: string, ...args: unknown[]): void {
 const INPUT_SAMPLE_MS = 33
 let lastSampleAt = 0
 let samplePending = false
+let lastFineCalibrationStatus = ''
 
-controller.onInput(() => {
+controller.onInput((input) => {
+  // GameSir Connect only treats a report as calibration progress when it
+  // names both sticks and carries a documented fine-step value. Ordinary
+  // live reports are commonly 0/0 and must not clear the UI's active stage.
+  if (isFineCalibrationStatus(input.fineTarget, input.fineStep)) {
+    const fineStatus = `${input.fineTarget}:${input.fineStep}`
+    if (fineStatus !== lastFineCalibrationStatus) {
+      // GameSir Connect consumes each valid report immediately. A dwell filter
+      // can discard the G7 Pro 8K's brief progress report between input frames.
+      lastFineCalibrationStatus = fineStatus
+      send('calibration:status', {
+        target: input.fineTarget,
+        step: input.fineStep,
+        timestamp: Date.now()
+      })
+    }
+  } else {
+    // Idle frames can be interleaved with calibration reports. Ignore them for
+    // progress; retaining the last stable stage prevents it flickering gray.
+  }
   const now = Date.now()
   const emit = (): void => {
     lastSampleAt = Date.now()
@@ -152,6 +172,7 @@ handle('leadjoy:writeStick', async (req: { path: string; slot: number; side: num
 })
 handle('device:connect', async (path: string): Promise<DeviceInfo> => {
   sessionEpoch++
+  lastFineCalibrationStatus = ''
   const info = await controller.connect(path)
   controller.attachInputDecoder()
   controller.transport.startWatchdog(4000, () => void autoReconnect('silent'))
@@ -179,9 +200,11 @@ handle('profile:switch', async (profile: number) => {
   return true
 })
 handle('profile:current', async () => controller.getCurrentProfile())
-handle('device:calibration', (state: number) => {
-  controller.calibration(state)
-  return true
+handle('device:calibration', (state: number, partMask?: number, mode?: number) => {
+  if (state === 0 && mode === 1) {
+    lastFineCalibrationStatus = ''
+  }
+  return controller.calibration(state, partMask, mode)
 })
 handle('device:stickCenter', async (stick: number, direction: number) => {
   await controller.nudgeCenter(stick, direction)

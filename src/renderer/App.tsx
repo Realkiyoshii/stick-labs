@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
-import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE } from '@shared/protocol'
+import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
 import { identifyModel, MODELS, type ControllerModel } from '@shared/models'
 import {
   describeRawResolution,
@@ -1466,6 +1466,95 @@ function CalibrationPanel({ modelName }: { modelName: string }): JSX.Element {
   )
 }
 
+function HardwareCalibrationPanel({ dirty, blocked, onActiveChange }: { dirty: boolean; blocked: boolean; onActiveChange: (active: boolean) => void }): JSX.Element {
+  const t = useT()
+  const [live, setLive] = useState<LiveSample | null>(null)
+  const [parts, setParts] = useState(15)
+  const [active, setActive] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const pending = useRef(false)
+  const passed = active && live?.calibrationActive === true && (live.calibrationPartMask & parts) === parts
+  const status = !active ? 'notStarted' : live?.calibrationActive ? 'running' : 'waiting'
+  useEffect(() => api().on('input:sample', sample => setLive(sample as LiveSample)), [])
+  useEffect(() => { onActiveChange(active); return () => onActiveChange(false) }, [active, onActiveChange])
+  async function calibrate(state: number): Promise<void> {
+    if (pending.current || blocked || dirty || (state === 1 && !passed)) return
+    pending.current = true
+    setBusy(true); setError(null); setMessage(null)
+    try {
+      await api().calibration(state, state === 0 ? parts : 0, CalMode.Standard)
+      if (state === 0) setLive(null) // Match the website: discard pre-start status.
+      setActive(state === 0)
+      setMessage(t(`cal.web.${state === 0 ? 'startSent' : state === 1 ? 'saveSent' : 'exitSent'}`))
+    } catch (e) { setError((e as Error).message) }
+    finally { pending.current = false; setBusy(false) }
+  }
+  async function adjust(stick: number, direction: number): Promise<void> {
+    if (pending.current || blocked || dirty || !active || !(parts & 3)) return
+    pending.current = true; setBusy(true); setError(null)
+    try { await api().setStickCenter(stick, direction); setMessage(t('cal.web.centerConfirmed')) }
+    catch (e) { setError((e as Error).message) }
+    finally { pending.current = false; setBusy(false) }
+  }
+  return <div className={`lab-calibration${active ? ' is-active' : ''}${passed ? ' is-complete' : ''}`}>
+    <div className="lab-cal-toolbar">
+      <div className="lab-cal-title"><span className="stick-eyebrow">STICK LABS</span><h2>{t('cal.bench')}</h2></div>
+      <span className={`lab-cal-session ${status}`} role="status"><i />{t(`cal.web.${status}`)}</span>
+    </div>
+    <div className="lab-cal-modes" role="group" aria-label={t('cal.web.parts')}>
+      {[['both', 15], ['sticks', 3], ['triggers', 12], ['motion', 16]].map(([key, value]) => <button key={key} className={`choice-btn lab-cal-mode${parts === value ? ' active' : ''}`} aria-pressed={parts === value} disabled={active || busy || blocked} onClick={() => setParts(Number(value))}>
+        <span className="lab-cal-mode-icon" aria-hidden="true">{key === 'both' ? <><StickSideIcon side="left" size={20} /><KeyIcon value={19} size={20} /></> : key === 'sticks' ? <StickSideIcon side="left" size={25} /> : key === 'triggers' ? <KeyIcon value={19} size={25} /> : <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="7"/><path d="m8 14 4-6 4 6"/></svg>}</span>
+        <span className="choice-label">{t(`cal.web.${key}`)}</span>
+      </button>)}
+    </div>
+    <div className="lab-cal-workspace">
+      <section className="card lab-cal-instruments">
+        <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('cal.fineLive')}</span><h3>{t('cal.fineLiveTitle')}</h3></div><span className={`lab-cal-input-light${live?.live ? ' on' : ''}`} aria-label={live?.live ? t('cal.connected') : t('cal.waiting')} /></div>
+        <div className="lab-cal-dials">
+          <StickDial x={live?.lx ?? 128} y={live?.ly ?? 128} label={t('cal.web.left')} />
+          <StickDial x={live?.rx ?? 128} y={live?.ry ?? 128} label={t('cal.web.right')} />
+        </div>
+        <div className="lab-cal-trigger-readouts">
+          {[['LT', live?.lt ?? 0], ['RT', live?.rt ?? 0]].map(([label, value]) => <div key={label} className="lab-cal-trigger"><div><span>{label}</span><strong>{Math.round(Number(value) / 255 * 100)}<small>%</small></strong></div><div className="lab-cal-meter"><i style={{ width: `${Math.min(100, Math.max(0, Number(value) / 255 * 100))}%` }} /></div></div>)}
+        </div>
+      </section>
+      <section className="card lab-cal-guide">
+        <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('cal.web.parts')}</span><h3>{t(`cal.web.${parts === 15 ? 'both' : parts === 3 ? 'sticks' : parts === 12 ? 'triggers' : 'motion'}`)}</h3></div></div>
+        <ol>
+          <li><span className="lab-cal-step-mark" aria-hidden="true">01</span><p>{t(parts === 16 ? 'cal.web.still' : 'cal.web.neutral')}</p></li>
+          <li><span className="lab-cal-step-mark" aria-hidden="true">02</span><p>{t(parts === 16 ? 'cal.web.startStill' : 'cal.web.move')}</p></li>
+          <li><span className="lab-cal-step-mark" aria-hidden="true">03</span><p>{t('cal.web.observe')}</p></li>
+        </ol>
+      </section>
+    </div>
+    <section className="lab-cal-feedback" aria-label={t('cal.web.status')}>
+      {[['left', 1], ['right', 2], ['leftTrigger', 4], ['rightTrigger', 8], ['motion', 16]].map(([key, bit]) => {
+        const flag = Number(bit)
+        const state = !active ? 'notStarted' : !(parts & flag) ? 'notSelected' : !live?.calibrationActive ? 'waiting' : live.calibrationPartMask & flag ? 'passed' : 'notPassed'
+        return <div key={key} className={`lab-cal-part ${state}`}><span className="lab-cal-part-indicator" aria-hidden="true">{state === 'passed' ? '✓' : '·'}</span><span><strong>{t(`cal.web.${key}`)}</strong><small>{t(`cal.web.${state}`)}</small></span></div>
+      })}
+    </section>
+    <details className="stick-extra lab-cal-center">
+      <summary>{t('cal.web.center')}</summary>
+      <div className="stick-extra-body"><p className="hint">{t('cal.web.centerHint')}</p><div className="lab-cal-center-grid">
+        {['left', 'right'].map((key, stick) => <section key={key}><span className="lab-cal-center-label"><StickSideIcon side={key as 'left' | 'right'} size={18} />{t(`cal.web.${key}`)}</span>
+          <div className="lab-cal-center-buttons">{['X +32', 'X −32', 'Y −32', 'Y +32'].map((label, direction) => <button key={label} className="btn sm ghost" disabled={blocked || busy || dirty || !active || !(parts & 3)} onClick={() => void adjust(stick, direction)} aria-label={`${t(`cal.web.${key}`)} · ${t('cal.web.centerAxis')} ${label}`}><span>{label[0]}</span><strong>{label.slice(2)}</strong></button>)}</div>
+        </section>)}
+      </div></div>
+    </details>
+    <footer className="lab-cal-dock">
+      <div className="lab-cal-dock-copy">{error ? <span className="lab-cal-error" role="alert">{error}</span> : dirty ? <span className="lab-cal-warning">{t('cal.web.dirty')}</span> : message ? <span role="status">{message}</span> : <span>{t(`cal.web.${status}`)}</span>}</div>
+      <div className="lab-cal-dock-actions">
+        <button className="btn ghost" disabled={blocked || busy || !active} onClick={() => void calibrate(2)}>{t('cal.web.exit')}</button>
+        <button className="btn primary" disabled={blocked || dirty || busy || active} onClick={() => void calibrate(0)}><span aria-hidden="true">▶</span>{t('cal.web.start')}</button>
+        <button className="btn primary" disabled={blocked || busy || !passed} onClick={() => void calibrate(1)}><span aria-hidden="true">✓</span>{t('cal.web.finish')}</button>
+      </div>
+    </footer>
+  </div>
+}
+
 function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpLength, modelName }: { connected: boolean; activeSlot: number | null; locked: boolean; modelId: string; modelLen: number; dumpLength: number; modelName: string | null }): JSX.Element {
   const t = useT()
   const [entries, setEntries] = useState<SlotEntry[]>([1, 2, 3, 4].map((index) => ({ index, name: null, bytes: null, loading: false, error: null })))
@@ -2634,7 +2723,12 @@ export default function App(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [loadId, setLoadId] = useState(0)
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
-  const [tab, setTab] = useState<'sticks' | 'device' | 'buttons' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
+  const [calibrationRunning, setCalibrationRunning] = useState(false)
+  const [tab, changeTab] = useState<'sticks' | 'device' | 'buttons' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
+  const setTab = (next: typeof tab): void => {
+    if (calibrationRunning && next !== 'calibrate') { setErr(t('cal.web.leave')); return }
+    changeTab(next)
+  }
   const [measuring, setMeasuring] = useState<{ left: number; suggestion: { dev: number; pct10: number } | null } | null>(null)
   const wanderRef = useRef(0)
   const modelLenRef = useRef(PROFILE_LENGTH)
@@ -3439,14 +3533,28 @@ export default function App(): JSX.Element {
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t('side.by')}</span>
           </div>
           <UpdateRow />
-          <button
-            type="button"
-            className="btn ghost sm"
-            style={{ marginTop: 6 }}
-            onClick={() => void api().openExternal('https://www.youtube.com/@realkiyoshi').catch(() => undefined)}
-          >
-            YouTube @realkiyoshi
-          </button>
+          <div className="creator-links">
+            <button
+              type="button"
+              className="creator-link creator-youtube"
+              title="YouTube @realkiyoshi"
+              aria-label="YouTube @realkiyoshi"
+              onClick={() => void api().openExternal('https://www.youtube.com/@realkiyoshi').catch(() => undefined)}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.1a3 3 0 0 0-2.1-2.2C19 4.4 12 4.4 12 4.4s-7 0-8.9.5A3 3 0 0 0 1 7.1a31 31 0 0 0-.5 4.9 31 31 0 0 0 .5 4.9 3 3 0 0 0 2.1 2.2c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.2 31 31 0 0 0 .5-4.9 31 31 0 0 0-.5-4.9Z"/><path fill="var(--bg-1)" d="m9.7 15.5 6-3.5-6-3.5Z"/></svg>
+              <span>YouTube</span>
+            </button>
+            <button
+              type="button"
+              className="creator-link creator-coffee"
+              title="Support me on Buy Me a Coffee"
+              aria-label="Support RealKiyoshi on Buy Me a Coffee"
+              onClick={() => void api().openExternal('https://buymeacoffee.com/RealKiyoshi').catch(() => undefined)}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 8h12v8a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8Zm12 1h1a3 3 0 1 1 0 6h-1M8 3v2m4-2v2m4-2v2M3 22h17"/></svg>
+              <span>{t('side.support')}</span>
+            </button>
+          </div>
         </div>
       </aside>
       <main className="main">
@@ -3471,7 +3579,7 @@ export default function App(): JSX.Element {
                   <button
                     key={s}
                     className={`choice-btn${s === slot ? ' active' : ''}`}
-                    disabled={!connected || busy || locked}
+                    disabled={!connected || busy || locked || calibrationRunning}
                     onClick={() => void loadSlot(s)}
                   >
                     <span className="choice-label">P{s}</span>
@@ -3479,7 +3587,7 @@ export default function App(): JSX.Element {
                 )))}
             {connected && <button
               className="btn sm primary"
-              disabled={isLj ? ljBusy || !ljDirty : !connected || !dirty || busy || locked}
+              disabled={isLj ? ljBusy || !ljDirty : !connected || !dirty || busy || locked || calibrationRunning}
               onClick={() => void (isLj ? writeLeadJoyDraft() : write())}
             >
               {(isLj ? ljBusy : busy) ? t('common.working') : t('top.write')}
@@ -4184,7 +4292,7 @@ export default function App(): JSX.Element {
             connected && model?.support === 'full' ? (
               isLj
                 ? <LeadJoyCalibrationPanel live={ljLive} onOpenSticks={() => setTab('sticks')} />
-                : <CalibrationPanel modelName={model.marketingName} />
+                : <HardwareCalibrationPanel dirty={dirty} blocked={busy || locked} onActiveChange={setCalibrationRunning} />
             ) : (
               <div className="msg"><h3>{t('cal.connectTitle')}</h3><p>{t('cal.connectBody')}</p></div>
             )

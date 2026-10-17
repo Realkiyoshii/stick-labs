@@ -1,6 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from '../renderer/App'
+import '../renderer/calibration.css'
 import '../renderer/styles.css'
 import { installWebApi } from './api'
 

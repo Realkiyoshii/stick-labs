@@ -1,0 +1,70 @@
+/* Stick Labs calibration workspace: shared tuning controls and passive live input. */
+.lab-calibration { max-width: 1180px; margin: 0 auto; display: grid; gap: 16px; }
+.lab-cal-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 2px 3px; }
+.lab-cal-title .stick-eyebrow { color: var(--accent-2); letter-spacing: .18em; font-size: 9px; }
+.lab-cal-title h2 { margin: 5px 0 0; font-size: 26px; letter-spacing: -.035em; line-height: 1.2; }
+.lab-cal-session { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 11px; }
+.lab-cal-session i, .lab-cal-input-light { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.lab-cal-session.running { color: var(--warn); }
+.lab-cal-session.running i { background: var(--warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 10%, transparent); }
+.is-complete .lab-cal-session.running { color: var(--good); }
+.is-complete .lab-cal-session.running i { background: var(--good); box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 10%, transparent); }
+.lab-cal-input-light.on { background: var(--good); box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 10%, transparent); }
+.lab-cal-modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 6px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg-1); }
+.lab-cal-modes .lab-cal-mode { min-width: 0; display: flex; justify-content: flex-start; align-items: center; gap: 11px; padding: 12px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-3); }
+.lab-cal-modes .lab-cal-mode.active { color: var(--text); border-color: var(--line-2); background: var(--bg-3); box-shadow: 0 2px 5px #0002; }
+.lab-cal-mode-icon { display: flex; align-items: center; justify-content: center; width: 38px; min-width: 38px; height: 29px; gap: 2px; }
+.lab-cal-mode.active .lab-cal-mode-icon { color: var(--accent-2); }
+.lab-cal-mode .choice-label { font-size: 11px; font-weight: 650; white-space: normal; text-align: left; line-height: 1.35; }
+.lab-cal-workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 16px; align-items: stretch; }
+.lab-cal-workspace > .card { min-width: 0; margin: 0; padding: 22px; }
+.lab-cal-instruments { overflow: hidden; }
+.lab-cal-instruments .stick-panel-heading h3, .lab-cal-guide .stick-panel-heading h3 { font-size: 17px; }
+.lab-cal-instruments .stick-panel-heading { align-items: center; }
+.lab-cal-dials { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 22px 0 19px; }
+.lab-cal-dials > div { min-width: 0; padding: 15px 7px 12px; border: 1px solid var(--line); border-radius: 10px; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 4%, var(--bg-1)), var(--bg-1) 75%); }
+.lab-cal-dials .label { color: var(--text-2); text-transform: uppercase; font-size: 10px; letter-spacing: .09em; font-weight: 650; }
+.lab-cal-dials canvas { display: block; width: min(100%, 170px) !important; height: auto !important; aspect-ratio: 1; margin: 8px auto; }
+.lab-cal-dials .mono { color: var(--text-3); font-size: 10px !important; }
+.lab-cal-trigger-readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.lab-cal-trigger { padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-1); }
+.lab-cal-trigger > div:first-child { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.lab-cal-trigger span { font-size: 10px; color: var(--text-3); letter-spacing: .1em; }
+.lab-cal-trigger strong { font: 600 13px 'Cascadia Mono', Consolas, monospace; color: var(--text-2); }
+.lab-cal-trigger small { margin-left: 3px; font-size: 9px; color: var(--text-3); }
+.lab-cal-meter { height: 3px; border-radius: 3px; overflow: hidden; background: var(--line); }
+.lab-cal-meter i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.lab-cal-guide { display: flex; flex-direction: column; }
+.lab-cal-guide ol { display: grid; gap: 19px; list-style: none; margin: 22px 0 0; padding: 0; }
+.lab-cal-guide li { display: flex; gap: 13px; align-items: flex-start; }
+.lab-cal-guide li p { margin: 0; padding-top: 1px; font-size: 12px; line-height: 1.75; color: var(--text-2); }
+.lab-cal-step-mark { min-width: 24px; padding: 4px 0; font: 500 10px 'Cascadia Mono', Consolas, monospace; color: var(--accent-2); border-top: 2px solid var(--accent); }
+.lab-cal-feedback { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.lab-cal-part { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 13px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-1); }
+.lab-cal-part-indicator { display: grid; place-items: center; flex: 0 0 19px; width: 19px; height: 19px; border: 1px solid var(--line-2); border-radius: 50%; font-size: 15px; line-height: 1; color: var(--text-3); }
+.lab-cal-part > span:last-child { min-width: 0; }
+.lab-cal-part strong, .lab-cal-part small { display: block; font-size: 10px; line-height: 1.45; font-weight: 600; }
+.lab-cal-part strong { color: var(--text-2); }
+.lab-cal-part small { margin-top: 3px; color: var(--text-3); font-size: 9px; font-weight: 400; }
+.lab-cal-part.notSelected { opacity: .45; }
+.lab-cal-part.passed { border-color: color-mix(in srgb, var(--good) 35%, var(--line)); background: color-mix(in srgb, var(--good) 5%, var(--bg-1)); }
+.lab-cal-part.passed .lab-cal-part-indicator { border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); font-size: 11px; }
+.lab-cal-part.passed small { color: var(--good); }
+.lab-cal-center { margin: 0; background: var(--bg-1); }
+.lab-cal-center > summary { padding: 14px 18px; }
+.lab-cal-center .hint { margin: 0 0 16px; }
+.lab-cal-center-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+.lab-cal-center-label { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 11px; margin-bottom: 12px; }
+.lab-cal-center-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.lab-cal-center-buttons .btn { display: flex; justify-content: space-between; gap: 6px; min-width: 0; padding: 10px; background: var(--bg-2); font: 11px 'Cascadia Mono', Consolas, monospace; }
+.lab-cal-center-buttons .btn > span { color: var(--text-3); font-size: 10px; }
+.lab-cal-dock { position: sticky; bottom: 12px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-2); box-shadow: 0 6px 22px #0003; }
+.lab-cal-dock-copy { color: var(--text-3); font-size: 11px; line-height: 1.5; max-width: 370px; }
+.lab-cal-dock-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.lab-cal-dock-actions .btn { display: inline-flex; gap: 8px; align-items: center; justify-content: center; min-height: 39px; padding: 10px 13px; font-size: 11px; }
+.lab-cal-dock-actions .btn > span { font-size: 10px; }
+.lab-cal-error { color: var(--bad); }
+.lab-cal-warning { color: var(--warn); }
+.lab-calibration button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 1050px) { .lab-cal-workspace { grid-template-columns: 1fr; } .lab-cal-guide ol { grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 18px; } .lab-cal-guide li { flex-direction: column; gap: 6px; } .lab-cal-dials canvas { width: min(100%, 175px) !important; } .lab-cal-dock { align-items: flex-start; flex-direction: column; gap: 10px; } .lab-cal-dock-copy { max-width: none; } .lab-cal-dock-actions { width: 100%; justify-content: flex-end; } }
+@media (max-width: 700px) { .lab-cal-modes { grid-template-columns: 1fr 1fr; } .lab-cal-feedback { grid-template-columns: repeat(2, 1fr); } .lab-cal-feedback > :last-child { grid-column: 1 / -1; } .lab-cal-guide ol { grid-template-columns: 1fr; } .lab-cal-guide li { flex-direction: row; gap: 13px; } .lab-cal-center-grid { grid-template-columns: 1fr; } .lab-cal-dock-actions { flex-wrap: wrap; } .lab-cal-toolbar { align-items: flex-start; } .lab-cal-session { font-size: 9px; } .lab-cal-workspace > .card { padding: 18px; } }

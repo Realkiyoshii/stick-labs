@@ -140,7 +140,8 @@ const basis = {
     controller.writeProfileVerified(profile, b64ToBytes(dataB64), length),
   switchProfile: (profile: number) => controller.switchProfile(profile).then(() => true),
   currentProfile: () => controller.getCurrentProfile(),
-  calibration: (state: number) => Promise.resolve(controller.calibration(state)),
+  calibration: (state: number, partMask?: number, mode?: number) =>
+    Promise.resolve(controller.calibration(state, partMask, mode)),
   setStickCenter: (stick: number, direction: number) =>
     controller.nudgeCenter(stick, direction).then(() => true),
   openExternal: (url: string) => {

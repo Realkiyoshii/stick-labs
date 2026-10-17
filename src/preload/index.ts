@@ -23,7 +23,8 @@ const api = {
     call<{ verified: boolean; rolledBack: boolean }>('profile:write', profile, dataB64, length),
   switchProfile: (profile: number) => call<boolean>('profile:switch', profile),
   currentProfile: () => call<number>('profile:current'),
-  calibration: (state: number) => call<boolean>('device:calibration', state),
+  calibration: (state: number, partMask?: number, mode?: number) =>
+    call<boolean>('device:calibration', state, partMask, mode),
   setStickCenter: (stick: number, direction: number) => call<boolean>('device:stickCenter', stick, direction),
   openExternal: (url: string) => call<boolean>('system:openExternal', url),
   version: () => call<string>('system:version'),

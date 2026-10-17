@@ -19,7 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: node scripts/test.mjs tests/rawbytes.ts tests/models.ts tests/t3ce.ts
+      - run: node scripts/test.mjs tests/rawbytes.ts tests/models.ts tests/t3ce.ts tests/calibration.ts
       - run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,12 +8,15 @@
  *   - decoding the 0x12 input report into a usable state object
  */
 import type { Transport } from './hid'
+import { identifyModel } from '../shared/models'
 import {
   PROFILE_LENGTH,
   LIGHT_PROFILE_LENGTH,
   Profile as ProfileIndex,
   calibrateParts,
   CalPart,
+  CalMode,
+  FineCalStep,
   enterProfileConfig,
   exitProfileConfig,
   macroRecord,
@@ -63,6 +66,13 @@ export interface LiveInput {
   /** Calibration target (byte 31) and part mask (byte 32) — 0/0 when idle. */
   calTarget: number
   calMask: number
+  /** Standard calibration state reported by the model-specific 0x12 fields. */
+  calibrationMode: number
+  calibrationActive: boolean
+  calibrationPartMask: number
+  /** G7 Pro 8K fine-stick target and step (input report bytes 31/32). */
+  fineTarget: number
+  fineStep: number
   /** raw[5..], so `buttons[0]` is raw[5]. */
   buttons: Uint8Array
   battery: number
@@ -96,6 +106,13 @@ export class Controller {
   private pending: Pending[] = []
   private inputListeners = new Set<(input: LiveInput) => void>()
   private lastInput: LiveInput | null = null
+  private lastFineCalibrationStatus: { target: number; step: number } | null = null
+  private inputSequence = 0
+  private fineCalibrationHeartbeat: NodeJS.Timeout | null = null
+  private fineCalibrationTerminalPending = false
+  private calibrationModelId = 'G7ProCE'
+  private standardCalibrationMask = 0
+  private lastStandardCalibrationStatus: { active: boolean; mask: number } | null = null
   /** Tearing down the previous decoder wiring; see `attachInputDecoder`. */
   private decoderOff: (() => void) | null = null
 
@@ -106,14 +123,14 @@ export class Controller {
    * Electron/node-hid only, and the browser build passes its WebHID transport
    * and its own (cached, synchronous) candidate list instead. See src/web/api.ts.
    */
-  constructor(transport: Transport, discover: () => ReadonlyArray<{ path: string }>) {
+  constructor(transport: Transport, discover: () => ReadonlyArray<{ path: string; productId?: number; product?: string }>) {
     this.transport = transport
     this.discover = discover
     this.transport.onResponse((raw) => this.dispatch(raw))
     this.transport.onError(() => this.failAll(new Error('device disconnected')))
   }
 
-  private readonly discover: () => ReadonlyArray<{ path: string }>
+  private readonly discover: () => ReadonlyArray<{ path: string; productId?: number; product?: string }>
 
   get isOpen(): boolean {
     return this.transport.isOpen
@@ -135,6 +152,8 @@ export class Controller {
    */
   async connect(path: string): Promise<DeviceInfo> {
     this.state = 'connecting'
+    const candidate = this.discover().find((device) => device.path === path)
+    this.calibrationModelId = identifyModel(candidate?.product, candidate?.productId)?.id ?? 'G7ProCE'
     // Awaited: the browser transport opens asynchronously (WebHID), the Electron
     // one is synchronous — awaiting a void is a no-op there.
     await this.transport.open(path)
@@ -168,6 +187,10 @@ export class Controller {
   }
 
   disconnect(): void {
+    this.stopFineCalibrationHeartbeat()
+    this.fineCalibrationTerminalPending = false
+    this.standardCalibrationMask = 0
+    this.lastStandardCalibrationStatus = null
     this.failAll(new Error('disconnected'))
     this.transport.close()
     this.state = 'disconnected'
@@ -460,13 +483,13 @@ export class Controller {
   }
 
   /**
-   * Drive calibration: `0x0F 0xFE <calType> <partMask>` — **not** `0x0F 0xFD`.
+   * Drive calibration: `0x0F 0xFE <calType> <partMask> <mode>` — **not** `0x0F 0xFD`.
    *
-   * `calType` is `CalSub`: 0 enter, 1 commit, 2 cancel. `partMask` is `CalPart`
-   * and this pad echoes it back byte-for-byte in byte 31 of the input report
-   * while calibration is in force, 0 when it is not — so "did it hear me" is
-   * observable without touching a stick (PROTOCOL.md §12.6,
-   * `tests/calibration.ts`).
+   * `calType` is `CalSub`: 0 enter, 1 commit, 2 cancel. In fine-stick mode,
+   * G7 Pro 8K reports target and prompted step in input bytes 31/32. Starting
+   * is fire-and-forget like GameSir Connect: return after sending the command,
+   * then consume progress asynchronously. Commit is refused until step 0x80
+   * has been observed, then awaits the terminal idle status.
    *
    * The `0x0F 0xFD` form this used to send is GameSir's *other* device
    * families' `getSetCalibrationStateCommand`. On this pad both `0` and `2` of
@@ -480,19 +503,112 @@ export class Controller {
    * that had accepted the command the whole time — what the previous
    * implementation did.
    *
-   * `calType` 1 (**Complete**) writes the current stick and trigger positions
-   * as the new reference. Calibration data is not part of the profile blob, so
-   * unlike a profile write there is no fixture to restore it from — callers
-   * must only send it when those positions are deliberately the desired ones.
+   * `calType` 1 (**Complete**) saves the firmware-collected calibration.
    *
    * Throws rather than silently returning when the handle is gone, because the
    * UI needs to distinguish "sent" from "nothing happened".
    */
-  calibration(state: number, partMask: number = CalPart.Sticks): void {
+  async calibration(
+    state: number,
+    partMask: number = CalPart.Sticks,
+    mode: number = CalMode.Standard
+  ): Promise<boolean> {
     if (!this.transport.isOpen) {
       throw new Error('device not open')
     }
-    this.transport.write(calibrateParts(state, partMask))
+    if (state !== 0 && state !== 1 && state !== 2) {
+      throw new Error(`invalid calibration state ${state}`)
+    }
+    if (mode === CalMode.Standard && (![0, 3, 12, 15, 16].includes(partMask) || (state === 0 && partMask === 0))) {
+      throw new Error('invalid standard calibration parts')
+    }
+    if (mode === CalMode.FineSticks && state === 1) {
+      const status = this.lastFineCalibrationStatus
+      if (status?.target !== partMask || status.step !== FineCalStep.Complete) {
+        throw new Error('calibration commit refused: the controller has not completed all stick steps')
+      }
+    }
+    if (mode === CalMode.Standard && state === 1) {
+      const status = this.lastStandardCalibrationStatus
+      if (!this.standardCalibrationMask || !status?.active || (status.mask & this.standardCalibrationMask) !== this.standardCalibrationMask) {
+        throw new Error('calibration commit refused: the controller has not completed the selected parts')
+      }
+    }
+
+    const sequence = this.inputSequence
+    if (mode === CalMode.FineSticks && state === 0) {
+      this.stopFineCalibrationHeartbeat()
+      ;(this.transport as Transport & { stopHeartbeat?: () => void }).stopHeartbeat?.()
+      this.fineCalibrationTerminalPending = false
+      this.lastFineCalibrationStatus = null
+      this.sendFineCalibrationHeartbeat()
+    }
+    if (mode === CalMode.Standard && state === 0) {
+      this.standardCalibrationMask = partMask
+      this.lastStandardCalibrationStatus = null
+    }
+    if (mode === CalMode.FineSticks && (state === 1 || state === 2)) this.fineCalibrationTerminalPending = true
+    try {
+      // Transport.write pads to 64 bytes, matching GameSir Connect's session
+      // writer for both fine and standard calibration commands.
+      this.transport.write(calibrateParts(state, partMask, mode))
+      if (mode === CalMode.Standard && (state === 1 || state === 2)) this.standardCalibrationMask = 0
+    } catch (error) {
+      if (mode === CalMode.FineSticks && (state === 1 || state === 2)) this.fineCalibrationTerminalPending = false
+      throw error
+    }
+
+    if (mode !== CalMode.FineSticks) return true
+    if (state === 0) {
+      this.fineCalibrationHeartbeat = setInterval(() => this.sendFineCalibrationHeartbeat(), 500)
+      // GameSir Connect does not wait for a start acknowledgement here. Some
+      // firmware revisions begin reporting progress only after the user moves
+      // a stick; waiting here made a successful command look like a failure.
+      return true
+    }
+    const accepted = (input: LiveInput): boolean => input.fineTarget === 0 && input.fineStep === 0
+    try {
+      await this.waitForInputAfter(sequence, accepted, 3000)
+      if (state === 1 || state === 2) {
+        this.fineCalibrationTerminalPending = false
+        this.stopFineCalibrationHeartbeat()
+        ;(this.transport as Transport & { startHeartbeat?: (intervalMs?: number) => void }).startHeartbeat?.(500)
+      }
+    } catch (error) {
+      if (state === 1 || state === 2) this.fineCalibrationTerminalPending = false
+      throw error
+    }
+    return true
+  }
+
+  private stopFineCalibrationHeartbeat(): void {
+    if (this.fineCalibrationHeartbeat) clearInterval(this.fineCalibrationHeartbeat)
+    this.fineCalibrationHeartbeat = null
+  }
+
+  private sendFineCalibrationHeartbeat(): void {
+    // Match GameSir Connect: calibration heartbeats use the same 64-byte
+    // padded report format as the start and terminal commands.
+    this.transport.heartbeat()
+  }
+
+  private waitForInputAfter(
+    sequence: number,
+    matches: (input: LiveInput) => boolean,
+    timeoutMs: number
+  ): Promise<LiveInput> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        off()
+        reject(new Error('timed out waiting for the controller calibration status'))
+      }, timeoutMs)
+      const off = this.onInput((input) => {
+        if (this.inputSequence <= sequence || !matches(input)) return
+        clearTimeout(timer)
+        off()
+        resolve(input)
+      })
+    })
   }
 
   /**
@@ -507,7 +623,9 @@ export class Controller {
     if (!this.transport.isOpen) {
       throw new Error('device not open')
     }
-    await this.request(setStickCenter(stick, direction), (p) => p.raw[1] === Resp.SetStickCenterAck, 3000)
+    const reply = await this.request(setStickCenter(stick, direction), (p) =>
+      p.raw.length >= 3 && (p.raw[1] === 0xe2 || p.raw[1] === Resp.SetStickCenterAck), 3000)
+    if (reply[2] !== 0) throw new Error('controller rejected center adjustment')
   }
 
   /**
@@ -542,9 +660,19 @@ export class Controller {
   attachInputDecoder(): () => void {
     this.decoderOff?.()
     const off = this.transport.onInput((raw) => {
-      const input = decodeInput(raw)
+      const input = decodeInput(raw, this.calibrationModelId)
       if (!input) return
       this.lastInput = input
+      this.inputSequence++
+      this.lastStandardCalibrationStatus = { active: input.calibrationActive, mask: input.calibrationPartMask }
+      if (isFineCalibrationStep(input.fineStep) && input.fineTarget === CalPart.Sticks) {
+        this.lastFineCalibrationStatus = { target: input.fineTarget, step: input.fineStep }
+      }
+      if (this.fineCalibrationTerminalPending && input.fineTarget === 0 && input.fineStep === 0) {
+        this.fineCalibrationTerminalPending = false
+        this.stopFineCalibrationHeartbeat()
+        ;(this.transport as Transport & { startHeartbeat?: (intervalMs?: number) => void }).startHeartbeat?.(500)
+      }
       for (const fn of this.inputListeners) fn(input)
     })
     this.decoderOff = off
@@ -566,7 +694,7 @@ export class Controller {
  *
  * `buttons` is raw[5..] so callers index it as `buttons[i] === raw[5 + i]`.
  */
-export function decodeInput(raw: Uint8Array): LiveInput | null {
+export function decodeInput(raw: Uint8Array, modelId = 'G7ProCE'): LiveInput | null {
   if (raw.length <= 60 || raw[0] !== 0x12) return null
 
   const lx = raw[1]
@@ -574,6 +702,15 @@ export function decodeInput(raw: Uint8Array): LiveInput | null {
   const rx = raw[3]
   const ry = raw[4]
   const battery = raw[36]
+  // The Cluck Hub calibration implementation uses the standard 0xFE status
+  // pair in WebHID payload bytes 30/31 (T3CE 24/25). node-hid includes
+  // report ID 0x12 at index zero, so add one to both offsets.
+  const standardCalOffset = modelId === 'T3CE' ? 25 : 31
+  const standardCalMode = raw[standardCalOffset]
+  const standardCalMask = raw[standardCalOffset + 1]
+  // Fine mode has a different report layout. GameSir Connect uses 31/32 for
+  // G7ProCE and the generic 25/26 pair for T3CE.
+  const fineCalOffset = modelId === 'T3CE' ? 25 : 31
 
   return {
     lx,
@@ -584,6 +721,11 @@ export function decodeInput(raw: Uint8Array): LiveInput | null {
     rt: raw[9],
     calTarget: raw[31],
     calMask: raw[32],
+    calibrationMode: standardCalMode,
+    calibrationActive: standardCalMode !== 1,
+    calibrationPartMask: standardCalMask,
+    fineTarget: raw[fineCalOffset],
+    fineStep: raw[fineCalOffset + 1],
     buttons: raw.slice(5),
     battery,
     charging: (raw[35] & 0x01) !== 0,
@@ -595,6 +737,10 @@ export function decodeInput(raw: Uint8Array): LiveInput | null {
     live: lx !== 0 || ly !== 0 || rx !== 0 || ry !== 0 || battery !== 0,
     timestamp: Date.now()
   }
+}
+
+function isFineCalibrationStep(value: number): boolean {
+  return value >= FineCalStep.Up && value <= FineCalStep.Circle || value === FineCalStep.Complete
 }
 
 /** Dpad nibble → direction label; 8/15/out-of-range = neutral. */

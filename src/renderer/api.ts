@@ -36,8 +36,18 @@ export interface LiveSample {
   rt: number
   calTarget: number
   calMask: number
+  calibrationMode: number
+  calibrationActive: boolean
+  calibrationPartMask: number
+  fineTarget: number
+  fineStep: number
   battery: number
   live: boolean
+  timestamp: number
+}
+export interface CalibrationStatus {
+  target: number
+  step: number
   timestamp: number
 }
 
@@ -49,7 +59,7 @@ interface LabApi {
   writeProfile(profile: number, dataB64: string, length?: number): Promise<{ verified: boolean; rolledBack: boolean }>
   switchProfile(profile: number): Promise<boolean>
   currentProfile(): Promise<number>
-  calibration(state: number): Promise<boolean>
+  calibration(state: number, partMask?: number, mode?: number): Promise<boolean>
   setStickCenter(stick: number, direction: number): Promise<boolean>
   ping(count: number): Promise<PingResult>
   openExternal(url: string): Promise<boolean>

@@ -346,6 +346,28 @@ export const CalPart = {
   Triggers: (1 << 2) | (1 << 3)
 } as const
 
+/** Calibration payload mode byte used by the formal GameSir calibration protocol. */
+export const CalMode = {
+  Standard: 0,
+  FineSticks: 1
+} as const
+
+/** Fine-stick steps. On the G7 Pro 8K, Connect reads these from bytes 31/32. */
+export const FineCalStep = {
+  Up: 0,
+  Down: 1,
+  Left: 2,
+  Right: 3,
+  Circle: 4,
+  Complete: 0x80
+} as const
+
+/** GameSir Connect's fine-calibration parser accepts only both-stick reports with documented steps. */
+export function isFineCalibrationStatus(target: number, step: number): boolean {
+  return target === CalPart.Sticks &&
+    ((step >= FineCalStep.Up && step <= FineCalStep.Circle) || step === FineCalStep.Complete)
+}
+
 /**
  * Sub-commands of {@link calibrateParts}, from GameSir's `SubCommand` enum.
  *
@@ -360,20 +382,20 @@ export const CalSub = {
 } as const
 
 /**
- * `[0x0F, 0xFE, calType, partMask]` — per-part calibration.
+ * `[0x0F, 0xFE, calType, partMask, mode]` — per-part calibration.
  *
  * This is the report GameSir's **G7 Pro CE** proxy builds in `reqToCalibrate`:
  * it derives `partMask` from a `calPart` string (`sticks` → bits 0|1,
  * `triggers` → bits 2|3, `motion` → bit 4, `triggers_sticks` → 0..3) and writes
- * it immediately with no Ack, same as {@link calibrationState}.
+ * it immediately with no Ack, same as {@link calibrationState}. Fine-stick
+ * mode (`mode=1`) drives the five-stage hardware calibration state machine.
  *
- * The pad answers in the input report rather than the command stream: byte 31
- * carries the calibration mode and byte 32 the part bitmask — the same two
- * offsets its fine-calibration session calls `statusTargetOffset` and
- * `statusStepOffset`. See PROTOCOL.md §12.6.
+ * On the G7 Pro 8K, fine mode progress is reported in input report bytes 31/32
+ * (Connect uses different offsets for other GameSir models).
+ * See PROTOCOL.md §12.6.
  */
-export function calibrateParts(calType: number, partMask: number): number[] {
-  return report(Cmd.CalibrateParts, calType, partMask)
+export function calibrateParts(calType: number, partMask: number, mode: number = CalMode.Standard): number[] {
+  return report(Cmd.CalibrateParts, calType, partMask, mode)
 }
 
 export function enterUpgradeMode(): number[] {
