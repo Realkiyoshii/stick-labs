@@ -1,5 +1,5 @@
 /**
- * LeadJoy Saber Plus protocol (VID 0x4131 PID 0x3519, config on MI_04
+ * Shared LeadJoy Saber Plus / Xeno Pro protocol (VID 0x4131 PID 0x3519, config on MI_04
  * usage page 0xFF80/0001, 64B HID reports, MessagePack payloads).
  *
  * Proven against hardware from Stick Labs' own handle (node-hid, report ID 0
@@ -45,7 +45,7 @@
  * writes stay disabled until a live hardware proof is recorded.
  */
 
-/** USB identity of the Saber Plus config interface (MI_04). */
+/** Shared USB identity of the Saber Plus / Xeno Pro configuration interface (MI_04). */
 export const LJ_VID = 0x4131
 export const LJ_PID_SABER_PLUS = 0x3519
 export const LJ_USAGE_PAGE = 0xff80

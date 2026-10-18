@@ -1,5 +1,5 @@
 /**
- * LeadJoy Saber Plus session (MI_04, usage page 0xFF80/0001).
+ * LeadJoy Saber Plus / Xeno Pro family session (MI_04, usage page 0xFF80/0001).
  *
  * Reads and verified button/stick writes use shared builders proven against
  * vendor captures in tests/leadjoy.ts. Trigger writes remain disabled until

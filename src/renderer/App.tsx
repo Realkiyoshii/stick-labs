@@ -5,7 +5,7 @@ import { TriggerSettings } from './TriggerSettings'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
-import { identifyModel, MODELS, type ControllerModel } from '@shared/models'
+import { identifyModel, identifyLeadJoyName, MODELS, type ControllerModel } from '@shared/models'
 import {
   describeRawResolution,
   bitsToLevels,
@@ -53,7 +53,7 @@ function Hint({ children, style }: { children: React.ReactNode; style?: React.CS
   )
 }
 
-function CandidateButton({ candidate, onConnect }: { candidate: Candidate; onConnect: (path: string) => void }): JSX.Element {
+function CandidateButton({ candidate, onConnect, displayName }: { candidate: Candidate; onConnect: (path: string) => void; displayName?: string }): JSX.Element {
   const known = identifyModel(candidate.product, candidate.productId)
   const genericProduct = !candidate.product || /^(gamepad|xbox 360 controller for windows)$/i.test(candidate.product.trim())
   const fallbackName = genericProduct
@@ -61,7 +61,7 @@ function CandidateButton({ candidate, onConnect }: { candidate: Candidate; onCon
     : candidate.product
   return (
     <button className="btn sm" onClick={() => onConnect(candidate.path)}>
-      {known ? known.marketingName : fallbackName}{candidate.preferred ? ' ★' : ''}
+      {displayName ?? (known ? known.marketingName : fallbackName)}{candidate.preferred ? ' ★' : ''}
     </button>
   )
 }
@@ -2754,6 +2754,7 @@ function LjControllerRateCard({ value, busy, onChange }: {
 export default function App(): JSX.Element {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [connPath, setConnPath] = useState<string | null>(null)
+  const [leadjoyDetectedNames, setLeadjoyDetectedNames] = useState<Record<string, string>>({})
   // Idle receivers (all-zero frames) are hidden; the open handle and
   // unopenable handles always stay visible. If nothing proves live, show
   // everything rather than an empty list. Receiver interfaces (0x0575) are
@@ -2769,7 +2770,7 @@ export default function App(): JSX.Element {
   const otherCandidates = preferredCandidates.length > 0 ? visibleCandidates.filter((c) => !c.preferred) : []
   const [connected, setConnected] = useState(false)
   const [info, setInfo] = useState<DeviceInfo | null>(null)
-  // LeadJoy Saber Plus — surfaced through the same UI as the GameSir pads.
+  // LeadJoy Saber Plus / Xeno Pro — shared protocol, same UI as GameSir.
   // Edits stage into `ljDraft`; the topbar Write commits them record by
   // record (each verified with readback); slots switch from the topbar.
   const [ljPath, setLjPath] = useState<string | null>(null)
@@ -3054,8 +3055,8 @@ export default function App(): JSX.Element {
       }
       if (pre && (pre.support === 'detect-only' || pre.id === 'SaberPlus')) {
         // No GameSir handshake for detect-only pads: foreign bytes on another
-        // vendor's device buy nothing and the timeout only confuses. The Saber
-        // Plus uses its own config protocol, so route it to its slot reader.
+        // vendor's device buy nothing and the timeout only confuses. The LeadJoy
+        // Saber Plus / Xeno Pro family uses its own slot reader.
         setModel(pre)
         setPid(cand?.productId ?? null)
         setBlob(null)
@@ -3292,6 +3293,19 @@ export default function App(): JSX.Element {
 
   // --- LeadJoy derived state: same UI, different wire ----------------------
   const isLj = !!ljPath && model?.id === 'SaberPlus'
+  const detectedLeadjoyName = isLj ? identifyLeadJoyName(ljSnap?.version, ljSnap?.board) : null
+  const modelName = detectedLeadjoyName ?? model?.marketingName
+  useEffect(() => {
+    if (!ljPath || !ljSnap) return
+    const name = identifyLeadJoyName(ljSnap.version, ljSnap.board)
+    setLeadjoyDetectedNames(previous => {
+      if (previous[ljPath] === (name ?? undefined)) return previous
+      const next = { ...previous }
+      if (name) next[ljPath] = name
+      else delete next[ljPath]
+      return next
+    })
+  }, [ljPath, ljSnap?.version, ljSnap?.board])
   const ljPadGrid = (side: 0 | 1): Array<{ x: number; y: number }> =>
     (ljSnap?.sticks.find((s) => s.side === side)?.curvePct ?? []).map(([x, y]) => ({ x: Math.round(x * 10), y: Math.round(y * 10) }))
   const ljPadZones: LjTriggerZones | null = ljSnap
@@ -3594,12 +3608,12 @@ export default function App(): JSX.Element {
           >
             {t('side.copy')}
           </button>
-          {primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} onConnect={(path) => void connect(path)} />)}
+          {primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} />)}
           {otherCandidates.length > 0 && (
             <details className="candidate-more">
               <summary>{t('side.otherControllers')} <span className="pill">{otherCandidates.length}</span></summary>
               <div className="stack">
-                {otherCandidates.map((c) => <CandidateButton key={c.path} candidate={c} onConnect={(path) => void connect(path)} />)}
+                {otherCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} />)}
               </div>
             </details>
           )}
@@ -3630,7 +3644,7 @@ export default function App(): JSX.Element {
           )}
           {isLj && ljSnap && (
             <div className="note">
-              <>{model?.marketingName}<br />{t('lj.version')} {ljSnap.version} · {t('lj.board')} {ljSnap.board}</>
+              <>{modelName}<br />{t('lj.version')} {ljSnap.version} · {t('lj.board')} {ljSnap.board}</>
             </div>
           )}
           {pid === 0x0575 && (
@@ -3769,7 +3783,7 @@ export default function App(): JSX.Element {
                   </button>
                 ))}
                 <div style={{ flex: 1 }} />
-                <span className="pill">{model?.marketingName} · {(['Main', 'Sub1', 'Sub2'] as const)[ljSlot]}</span>
+                <span className="pill">{modelName} · {(['Main', 'Sub1', 'Sub2'] as const)[ljSlot]}</span>
               </div>
               {!ljSnap && <div className="msg"><h3>{ljBusy ? t('lj.reading') : t('msg.loading')}</h3></div>}
               {ljSnap && (tab === 'sticks' || tab === 'curves') && (() => {
@@ -4265,7 +4279,7 @@ export default function App(): JSX.Element {
           {tab === 'profiles' && (
             isLj ? (
               <div className="msg">
-                <h3>{model?.marketingName} — {t('lj.profilesLockedTitle')}</h3>
+                <h3>{modelName} — {t('lj.profilesLockedTitle')}</h3>
                 <p>{t('lj.profilesLockedBody')}</p>
               </div>
             ) : (

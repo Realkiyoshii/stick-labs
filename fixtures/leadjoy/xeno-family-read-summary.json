@@ -1,0 +1,152 @@
+{
+  "reportedFamily": "LeadJoy Xeno Pro / Saber Plus",
+  "identity": {
+    "vendorId": 16689,
+    "productId": 13593,
+    "usagePage": 65408,
+    "usage": 1,
+    "usbProduct": "Controller"
+  },
+  "mode": "read-only",
+  "writesPerformed": false,
+  "physicalModelDistinguishableFromUsb": false,
+  "slots": [
+    {
+      "slot": 0,
+      "version": "57.16.15",
+      "board": "DEFAULT_BOARD",
+      "buttonIds": [
+        1,
+        2,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        24,
+        25,
+        26,
+        27,
+        3
+      ],
+      "sticks": [
+        {
+          "side": 0,
+          "shape": 1,
+          "curvePointCount": 8
+        },
+        {
+          "side": 1,
+          "shape": 1,
+          "curvePointCount": 8
+        }
+      ],
+      "triggerModes": [
+        2,
+        2
+      ]
+    },
+    {
+      "slot": 1,
+      "version": "57.16.15",
+      "board": "DEFAULT_BOARD",
+      "buttonIds": [
+        1,
+        2,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        24,
+        25,
+        26,
+        27,
+        3
+      ],
+      "sticks": [
+        {
+          "side": 0,
+          "shape": 1,
+          "curvePointCount": 8
+        },
+        {
+          "side": 1,
+          "shape": 1,
+          "curvePointCount": 8
+        }
+      ],
+      "triggerModes": [
+        2,
+        2
+      ]
+    },
+    {
+      "slot": 2,
+      "version": "57.16.15",
+      "board": "DEFAULT_BOARD",
+      "buttonIds": [
+        1,
+        2,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        24,
+        25,
+        26,
+        27,
+        3
+      ],
+      "sticks": [
+        {
+          "side": 0,
+          "shape": 1,
+          "curvePointCount": 8
+        },
+        {
+          "side": 1,
+          "shape": 1,
+          "curvePointCount": 8
+        }
+      ],
+      "triggerModes": [
+        2,
+        2
+      ]
+    }
+  ],
+  "physicalModel": "LeadJoy Xeno Pro",
+  "physicalModelConfirmation": "User confirmed the connected controller is the Xeno Pro on 2026-10-18."
+}

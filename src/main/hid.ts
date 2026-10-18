@@ -94,7 +94,7 @@ const PREFERRED_PIDS = new Set([
   0x10c5, 0x10c6, 0x10b7, 0x10b9, 0x10cd, 0x10ce,
   // Tarantula (T3CE)
   0x103d, 0x10ff, 0x090d,
-  // LeadJoy Saber Plus configuration interface
+  // LeadJoy Saber Plus / Xeno Pro shared configuration interface
   0x3519,
 ])
 

@@ -65,18 +65,20 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
     supportNote: 'Profile codec proven byte-exact against hardware fixtures.'
   },
   {
+    // Legacy internal family ID retained: the Saber Plus and Xeno Pro share
+    // the generic 4131:3519 configuration identity, so USB cannot name one reliably.
     id: 'SaberPlus',
-    marketingName: 'LeadJoy Saber Plus',
+    marketingName: 'LeadJoy Saber Plus / Xeno Pro',
     vendorId: 0x4131,
     usagePage: 0xff80,
     usage: 0x01,
     pids: [0x3519],
-    productHints: ['Saber', 'LeadJoy'],
+    productHints: ['Xeno Pro', 'Xeno', 'Saber', 'LeadJoy'],
     reportRates: [],
     profileLength: 0,
     dumpLength: 0,
     support: 'full',
-    supportNote: 'In-app control for button remaps, stick curves/deadzones and controller rate. Trigger deadzones are shown read-only until the write command has live hardware proof. Button and stick writes have live readback proof.'
+    supportNote: 'Shared LeadJoy protocol for Saber Plus / Xeno Pro: button remaps, stick curves/deadzones, shape and stick-to-mouse sensitivity. Trigger settings remain read-only. Readback/restore protection is used for every supported write. USB product IDs do not distinguish these two models.'
   },
   {
     id: 'G7SE',
@@ -175,4 +177,17 @@ export function identifyModel(product: string | undefined, productId?: number): 
     }
   }
   return best
+}
+
+/** Observed, user-confirmed LeadJoy signatures. Never infer a model from a
+ * version prefix: unknown/new firmware keeps the shared family display name.
+ * Display only; both products continue to use the same LeadJoy transport.
+ */
+export function identifyLeadJoyName(version: string | undefined, board: string | undefined): string | null {
+  if (board !== 'DEFAULT_BOARD') return null
+  switch (version?.trim()) {
+    case '57.16.15': return 'LeadJoy Xeno Pro'
+    case '36.16.12': return 'LeadJoy Saber Plus'
+    default: return null
+  }
 }
