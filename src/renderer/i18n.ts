@@ -221,6 +221,8 @@ const STR: Dict = {
   'sticks.curveNameExists': { en: 'A preset with that name already exists.', zh: '已存在同名预设。', ja: '同じ名前のプリセットがすでにあります。', ru: 'Пресет с таким именем уже существует.' },
   'sticks.customCurveName': { en: 'Custom curve {n}', zh: '自定义曲线 {n}', ja: 'カスタムカーブ {n}', ru: 'Своя кривая {n}' },
   'sticks.curveSavedNotice': { en: 'Saved “{name}” to your curve presets.', zh: '已将“{name}”保存到曲线预设。', ja: '「{name}」をカーブプリセットに保存しました。', ru: '«{name}» сохранена в пресетах кривых.' },
+  'sticks.curvesStandard': { en: 'Standard curves', zh: '标准曲线', ja: '標準カーブ', ru: 'Стандартные кривые' },
+  'sticks.curvesCreator': { en: 'Creator curves', zh: '创作者曲线', ja: 'クリエイターカーブ', ru: 'Кривые авторов' },
   'sticks.noSavedCurves': { en: 'No custom presets saved yet.', zh: '还没有保存自定义预设。', ja: 'カスタムプリセットはまだありません。', ru: 'Пользовательских пресетов пока нет.' },
   'sticks.resetCurve': { en: 'Reset curve', zh: '重置曲线', ja: 'カーブリセット', ru: 'Сбросить кривую' },
   'sticks.shape': { en: 'Shape', zh: '形状', ja: '形状', ru: 'Форма' },

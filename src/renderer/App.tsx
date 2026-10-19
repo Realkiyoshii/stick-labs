@@ -355,10 +355,11 @@ function SavedCurvePreset({ preset, max = 255, onApply, onRename, onDelete }: {
  * game's own published curve chart (thumbstick movement → rotation speed):
  * above the diagonal early, crossing at mid, settled below it late.
  */
-export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Array<{ x: number; y: number }> }> = {
+export const AIM_CURVES: Record<string, { label: string; hint: string; creator?: boolean; pts: Array<{ x: number; y: number }> }> = {
   linear: { label: 'Linear', hint: '1:1 raw', pts: [...LINEAR_CURVE] },
   zamilitox: {
     label: 'Zamilitox',
+    creator: true,
     hint: 'shared S-curve: hot start, settled edge',
     pts: [{ x: 0, y: 0 }, { x: 26, y: 48 }, { x: 71, y: 89 }, { x: 128, y: 128 }, { x: 184, y: 166 }, { x: 230, y: 204 }, { x: 255, y: 255 }]
   },
@@ -367,8 +368,25 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Arra
     hint: 'digitized from CoD chart: hot start, settled mid',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 89 }, { x: 128, y: 128 }, { x: 191, y: 173 }, { x: 255, y: 255 }]
   },
+  ryuta: {
+    label: '7ryuta',
+    creator: true,
+    hint: 'lifted start, 1:1 from 160, 9 points',
+    pts: [
+      { x: 0, y: 0 },
+      { x: 32, y: 34 },
+      { x: 63, y: 76 },
+      { x: 93, y: 116 },
+      { x: 129, y: 144 },
+      { x: 160, y: 160 },
+      { x: 191, y: 191 },
+      { x: 223, y: 223 },
+      { x: 255, y: 255 }
+    ]
+  },
   fpsAim: {
     label: 'Kiyoshi Curve',
+    creator: true,
     hint: 'calm centre, hot edge',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 38 }, { x: 128, y: 100 }, { x: 191, y: 185 }, { x: 255, y: 255 }]
   },
@@ -396,7 +414,9 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Arra
     hint: 'late surge',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 16 }, { x: 128, y: 70 }, { x: 191, y: 158 }, { x: 255, y: 255 }]
   },
-  sacreds: {    label: 'Sacreds',
+  sacreds: {
+    label: 'Sacreds',
+    creator: true,
     hint: 'Hyperstrike-style smooth fast start, 10 points',
     pts: [
       { x: 0, y: 0 },
@@ -413,6 +433,7 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Arra
   },
   machixo: {
     label: 'Machixo',
+    creator: true,
     hint: 'Slow-start desensitized, tops at 94%',
     pts: [
       { x: 0, y: 0 },
@@ -426,6 +447,7 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Arra
   },
   nekosu: {
     label: 'Nekosu',
+    creator: true,
     hint: 'Snappy fast start, even pull, 10 points',
     pts: [
       { x: 0, y: 0 },
@@ -441,6 +463,12 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; pts: Arra
     ]
   }
 }
+
+/** Preset picker sections: general-purpose shapes first, then creator curves. */
+export const CURVE_GROUPS = [
+  { titleKey: 'sticks.curvesStandard', curves: Object.entries(AIM_CURVES).filter(([, c]) => !c.creator) },
+  { titleKey: 'sticks.curvesCreator', curves: Object.entries(AIM_CURVES).filter(([, c]) => c.creator) }
+] as const
 
 
 function AnalyticsPanel({ context, setHz, gear }: { context: string; setHz: number; gear: number }): JSX.Element {  const t = useT()
@@ -2645,14 +2673,19 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
       </section></div><div className="curve-preset-area"><section className="curve-presets-visible">
         <h4>{t('sticks.presetsAndSaved')}</h4>
         <div className="stick-extra-body">
-      <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
-        {Object.entries(AIM_CURVES).map(([key, c]) => (
-          <button key={key} className="choice-btn" title={c.hint} onClick={() => stageCurve(toPts(ljSampleDesign(c.pts, zones)))}>
-            <CurveMiniIcon points={c.pts} />
-            <span className="choice-label">{c.label}</span>
-          </button>
-        ))}
-      </div>
+      {CURVE_GROUPS.map((g) => (
+        <div key={g.titleKey} className="curve-preset-group">
+          <h5>{t(g.titleKey)}</h5>
+          <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
+            {g.curves.map(([key, c]) => (
+              <button key={key} className="choice-btn" title={c.hint} onClick={() => stageCurve(toPts(ljSampleDesign(c.pts, zones)))}>
+                <CurveMiniIcon points={c.pts} />
+                <span className="choice-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
       <div className="row wrap" style={{ gap: 8, margin: '8px 0', alignItems: 'center' }}>
         <button
           className="btn sm"
@@ -4040,18 +4073,23 @@ export default function App(): JSX.Element {
                     </section></div><div className="curve-preset-area"><section className="curve-presets-visible">
                       <h4>{t('sticks.presetsAndSaved')}</h4>
                       <div className="stick-extra-body">
-                    <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
-                      {Object.entries(AIM_CURVES).map(([key, c]) => (
-                        <button
-                          key={key}
-                          className="choice-btn"
-                          title={c.hint}
-                          onClick={() => stageDesign(c.pts.map((p) => ({ ...p })))}
-                        >
-                          <span className="row curve-preset-label"><CurveMiniIcon points={c.pts} /><span className="choice-label">{c.label}</span></span>
-                        </button>
-                      ))}
-                    </div>
+                    {CURVE_GROUPS.map((g) => (
+                      <div key={g.titleKey} className="curve-preset-group">
+                        <h5>{t(g.titleKey)}</h5>
+                        <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
+                          {g.curves.map(([key, c]) => (
+                            <button
+                              key={key}
+                              className="choice-btn"
+                              title={c.hint}
+                              onClick={() => stageDesign(c.pts.map((p) => ({ ...p })))}
+                            >
+                              <span className="row curve-preset-label"><CurveMiniIcon points={c.pts} /><span className="choice-label">{c.label}</span></span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                     <div className="row wrap" style={{ gap: 8, margin: '8px 0', alignItems: 'center' }}>
                       <button
                         className="btn sm"

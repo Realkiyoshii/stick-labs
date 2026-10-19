@@ -1,5 +1,5 @@
 // CoD-style Dynamic preset: byte shape + write-path quantization, pinned.
-import { AIM_CURVES } from '../src/renderer/App'
+import { AIM_CURVES, CURVE_GROUPS } from '../src/renderer/App'
 import { resampleCurve } from '../src/shared/sticklab'
 
 let failed = 0
@@ -25,6 +25,23 @@ check(
 check(
   'zamilitox hot-start S shape',
   zam.pts[1].y > zam.pts[1].x && zam.pts[3].y === zam.pts[3].x && zam.pts[4].y < zam.pts[4].x
+)
+const eb = AIM_CURVES.ryuta
+check('7ryuta exists', !!eb && eb.label === '7ryuta')
+check(
+  '7ryuta exact 9 points from the designer screenshot',
+  JSON.stringify(eb.pts.map((p) => [p.x, p.y])) ===
+    JSON.stringify([[0, 0], [32, 34], [63, 76], [93, 116], [129, 144], [160, 160], [191, 191], [223, 223], [255, 255]])
+)
+const ebq = resampleCurve(eb.pts.map((p) => ({ ...p })))
+check('7ryuta quantizes to 5 monotonic pad points', ebq.length === 5 && ebq.every((p, i) => i === 0 || (p.x >= ebq[i - 1].x && p.y >= ebq[i - 1].y)))
+const groupLabels = CURVE_GROUPS.map((g) => g.curves.map(([, c]) => c.label))
+check(
+  'presets split into standard and creator sections',
+  JSON.stringify(groupLabels) === JSON.stringify([
+    ['Linear', 'Dynamic (CoD)', 'Micro-aim', 'Flick/Snap', 'Snappy mid', 'Steady track', 'Expo'],
+    ['Zamilitox', '7ryuta', 'Kiyoshi Curve', 'Sacreds', 'Machixo', 'Nekosu']
+  ])
 )
 const pts = dyn.pts
 // byte-safe: 5 pts, x strictly ascending in 0..255, y in 0..255, endpoints pinned

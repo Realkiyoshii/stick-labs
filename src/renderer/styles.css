@@ -1423,3 +1423,6 @@ table.tbl tbody tr:hover {
 .clean-profile-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
 .clean-profile-summary > span { padding: 7px 10px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 7px; color: var(--text-2); font-size: 10px; }
 .clean-profile-card > .clean-profile-detail { color: var(--text-3); font-size: 10px; margin-bottom: 18px; }
+
+.curve-preset-group + .curve-preset-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.curve-preset-group h5 { margin: 0; color: var(--text-3); font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
