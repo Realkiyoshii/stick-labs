@@ -1,12 +1,13 @@
 name: web
 
-# Publishes the browser build (dist-web) to GitHub Pages with each release, so
-# the hosted app always matches the latest desktop version. Can also be run by
-# hand from the Actions tab.
+# Publishes the browser build (dist-web) to GitHub Pages on every push to main
+# (release commits land there too), so the hosted app always carries the main
+# build's latest changes. The github-pages environment only accepts main, so
+# tags don't deploy. Can also be run by hand from the Actions tab.
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
