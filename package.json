@@ -1,6 +1,6 @@
 {
   "name": "g7-stick-lab",
-  "version": "3.0.13",
+  "version": "3.0.14",
   "description": "GameSir G7 Pro 8K stick-only tuner \u00e2\u20ac\u201d bit depth, curves, deadzone, polling",
   "main": "out/main/index.js",
   "author": "Kai",

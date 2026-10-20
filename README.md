@@ -12,6 +12,23 @@ button remapping, profiles, calibration, diagnostics, Steam configuration
 export, and USB polling analysis. The exact available screens depend on the
 edition being built.
 
+## Web version
+
+Stick Labs also runs in the browser, with nothing to install:
+**https://realkiyoshii.github.io/stick-labs/**
+
+- Works in Chrome, Edge, Vivaldi and Opera (they support WebHID). Firefox and
+  Safari can't talk to controllers.
+- Supports the same controllers as the desktop app: GameSir G7 Pro 8K and
+  Tarantula 8K, plus LeadJoy Saber Plus and Xeno Pro. Writes use the same
+  verified read-back as the desktop app.
+- Click **Rescan USB** and pick your controller in the browser's prompt. Close
+  GameSir Connect or the LeadJoy app first.
+- Desktop only: the kernel polling-rate check and the Steam/Apex config export,
+  since a web page can't reach those parts of Windows.
+
+The site is rebuilt and published automatically with every release.
+
 ## Requirements
 
 - Windows
