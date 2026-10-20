@@ -3,6 +3,9 @@ import { capturedKeyTarget, capturedPadTarget, PadCaptureGate, type CaptureFamil
 import { useContext, useEffect, useRef, useState } from 'react'
 import { TriggerSettings } from './TriggerSettings'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
+import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/curveAdjust'
+import { describeProfileChanges, type ReviewItem } from '@shared/review'
+import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
 import { identifyModel, identifyLeadJoyName, MODELS, type ControllerModel } from '@shared/models'
@@ -74,6 +77,7 @@ function Slider(props: {  label: React.ReactNode
   unit?: string
   onChange: (v: number) => void
   format?: (v: number) => string
+  disabled?: boolean
 }): JSX.Element {
   return (
     <label style={{ display: 'block' }}>
@@ -89,6 +93,7 @@ function Slider(props: {  label: React.ReactNode
         max={props.max}
         step={props.step}
         value={props.value}
+        disabled={props.disabled}
         onChange={(e) => props.onChange(Number(e.target.value))}
       />
     </label>
@@ -114,7 +119,37 @@ function SplineControl({ enabled, onChange, slots }: { enabled: boolean; onChang
   return <div className="curve-spline-control"><div><strong>{t('sticks.spline')}</strong><p>{t('sticks.splineHelp').replace('{slots}', String(slots))}</p></div><button type="button" role="switch" aria-checked={enabled} aria-label={t('sticks.spline')} className={`curve-spline-switch${enabled ? ' enabled' : ''}`} onClick={() => onChange(!enabled)}><span aria-hidden="true" /><b>{t(enabled ? 'sticks.splineOn' : 'sticks.splineOff')}</b></button></div>
 }
 
-function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_INFINITY, overlay, max = 255, height = 240, spline = false }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; onAddPoint?: (point: { x: number; y: number }) => void; maxPoints?: number; overlay?: Array<{ x: number; y: number }>; max?: number; height?: number; spline?: boolean }): JSX.Element {
+/** Review before Write: what the staged profile changes versus the pad. */
+function WriteReview({ slot, items, busy, onCancel, onWrite }: { slot: number; items: ReviewItem[]; busy: boolean; onCancel: () => void; onWrite: () => void }): JSX.Element {
+  const t = useT()
+  const value = (v?: string): string => {
+    if (!v) return ''
+    const [mode, rate] = v.split(':')
+    return ['linear', 'smooth', 'delay', 'custom'].includes(mode) ? `${t(`sticks.curveType.${mode}`)}${rate ? ` ${rate}` : ''}` : v
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+  return <div className="review-backdrop" role="presentation" onClick={onCancel}>
+    <div className="review-dialog" role="dialog" aria-modal="true" aria-labelledby="review-title" onClick={(e) => e.stopPropagation()}>
+      <h3 id="review-title">{t('review.title').replace('{slot}', String(slot))}</h3>
+      {items.length === 0 ? <p className="review-empty">{t('review.none')}</p> : <ul className="review-list">
+        {items.map((item, i) => <li key={i}>
+          <span className="review-label">{item.stick !== undefined && <b>{t(item.stick === 0 ? 'review.left' : 'review.right')} · </b>}{t(item.key)}</span>
+          {item.from !== undefined && <span className="review-change"><span className="mono">{value(item.from)}</span> → <span className="mono">{value(item.to)}</span></span>}
+        </li>)}
+      </ul>}
+      <div className="review-actions">
+        <button type="button" className="btn sm ghost" onClick={onCancel}>{t('review.cancel')}</button>
+        <button type="button" className="btn sm primary" disabled={busy} autoFocus onClick={onWrite}>{t('top.write')}</button>
+      </div>
+    </div>
+  </div>
+}
+
+function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_INFINITY, overlay, max = 255, height = 240, spline = false, preview, liveDot }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; onAddPoint?: (point: { x: number; y: number }) => void; maxPoints?: number; overlay?: Array<{ x: number; y: number }>; max?: number; height?: number; spline?: boolean; /** Linear/Smooth/Delay: draw this line instead of the points. */ preview?: Array<{ x: number; y: number }>; /** Live stick position on the curve, plot units. */ liveDot?: { x: number; y: number } | null }): JSX.Element {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const drag = useRef<number | null>(null)
 
@@ -126,7 +161,7 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
     }
   }
 
-  function pointAt(e: React.PointerEvent, w: number, h: number): number | null {
+  function pointAt(e: React.MouseEvent, w: number, h: number): number | null {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
     const px = e.clientX - rect.left
     const py = e.clientY - rect.top
@@ -231,13 +266,13 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
     ctx.lineWidth = 2
     ctx.beginPath()
     // Draw the selected interpolation; control handles remain on the original points.
-    const line = spline ? traceSpline(points.map(p => ({ x: p.x * 255 / max, y: p.y * 255 / max })), 255).map(p => ({ x: p.x * max / 255, y: p.y * max / 255 })) : points
+    const line = preview ?? (spline ? traceSpline(points.map(p => ({ x: p.x * 255 / max, y: p.y * 255 / max })), 255).map(p => ({ x: p.x * max / 255, y: p.y * max / 255 })) : points)
     line.forEach((p, i) => {
       if (i === 0) ctx.moveTo(toX(p.x), toY(p.y))
       else ctx.lineTo(toX(p.x), toY(p.y))
     })
     ctx.stroke()
-    if (overlay) {
+    if (overlay && !preview) {
       ctx.strokeStyle = 'rgba(245,181,68,0.85)'
       ctx.setLineDash([5, 4])
       ctx.beginPath()
@@ -254,13 +289,33 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
       })
       ctx.lineWidth = 2
     }
-    points.forEach((p) => {
+    ;(preview ? [preview[0], preview[preview.length - 1]] : points).forEach((p) => {
       ctx.fillStyle = drag.current !== null ? '#f5b544' : '#ff8fa0'
       ctx.beginPath()
       ctx.arc(toX(p.x), toY(p.y), 5, 0, Math.PI * 2)
       ctx.fill()
     })
-  }, [points, overlay, max, height, spline])
+    if (liveDot) {
+      // Guides to both axes, then the dot itself.
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(toX(liveDot.x), toY(0))
+      ctx.lineTo(toX(liveDot.x), toY(liveDot.y))
+      ctx.lineTo(toX(0), toY(liveDot.y))
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = '#ffffff'
+      ctx.strokeStyle = '#3ecf8e'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(toX(liveDot.x), toY(liveDot.y), 7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      ctx.lineWidth = 2
+    }
+  }, [points, overlay, max, height, spline, preview, liveDot])
   return (
     <canvas
       ref={ref}
@@ -272,7 +327,12 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
         if (i !== null) {
           drag.current = i
           ;(e.target as HTMLCanvasElement).setPointerCapture(e.pointerId)
-        } else if (onAddPoint && points.length < maxPoints) {
+        }
+      }}
+      onDoubleClick={(e) => {
+        // Adding needs a double-click so a stray click can't stage a point.
+        if (!onChange || !ref.current || pointAt(e, ref.current.clientWidth, height) !== null) return
+        if (onAddPoint && points.length < maxPoints) {
           const rect = ref.current.getBoundingClientRect()
           const pad = 10
           const x = Math.max(0, Math.min(max, Math.round(((e.clientX - rect.left - pad) / (ref.current.clientWidth - pad * 2)) * max)))
@@ -463,6 +523,9 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; creator?:
     ]
   }
 }
+
+/** X/Y scale: write/readback and live output proven on Tarantula 8K P4 (docs/axis-scale.md). */
+const AXIS_SCALE_VERIFIED = true
 
 /** Preset picker sections: general-purpose shapes first, then creator curves. */
 export const CURVE_GROUPS = [
@@ -2832,6 +2895,9 @@ export default function App(): JSX.Element {
   }, [slot])
   const [blob, setBlob] = useState<Uint8Array | null>(null)
   const [dirty, setDirty] = useState(false)
+  /** Bytes last read from or verified on the pad, for Review before Write. */
+  const [padBytes, setPadBytes] = useState<Uint8Array | null>(null)
+  const [review, setReview] = useState<ReviewItem[] | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [which, setWhich] = useState(0)
@@ -3203,7 +3269,9 @@ export default function App(): JSX.Element {
     setErr(null)
     try {
       const res = await api().readProfile(s, len)
-      setBlob(b64ToBytes(res.bytes))
+      const bytes = b64ToBytes(res.bytes)
+      setBlob(bytes)
+      setPadBytes(bytes.slice())
       setSlot(s)
       setDirty(false)
       setLoadId((n) => n + 1)
@@ -3211,6 +3279,17 @@ export default function App(): JSX.Element {
       setErr((e as Error).message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  /** Write goes through a short summary of what changes versus the pad. */
+  function openReview(): void {
+    if (!blob) return
+    if (profile && (outLock[0] || outLock[1]) && stick.lockStickOutput(profile.sticks, outLock)) syncBlob()
+    try {
+      setReview(padBytes && padBytes.length === blob.length ? describeProfileChanges(padBytes, blob, modelId) : [{ key: 'review.full' }])
+    } catch {
+      setReview([{ key: 'review.full' }])
     }
   }
 
@@ -3227,6 +3306,7 @@ export default function App(): JSX.Element {
       const res = await api().writeProfile(slot, bytesToB64(blob), modelLen)
       if (res.verified) {
         setFreshUndo(null)
+        setPadBytes(blob.slice())
         const liveNow = info?.currentProfile
         setSavedAt({ slot, at: Date.now() })
         setDirty(false)
@@ -3371,6 +3451,13 @@ export default function App(): JSX.Element {
         return m.enabled !== pad.enabled || m.rate !== pad.rate
       }))
 
+  // Tell the main process about staged edits so hiding to the tray or quitting warns first.
+  useEffect(() => {
+    const staged = isLj ? ljDirty : dirty
+    const prompt = (kind: 'hide' | 'quit') => ({ message: t('unsaved.message'), detail: t(`unsaved.${kind}Detail`), confirm: t(`unsaved.${kind}`), cancel: t('unsaved.keep') })
+    void api().setUnsaved({ dirty: staged, hide: prompt('hide'), quit: prompt('quit') }).catch(() => undefined)
+  }, [dirty, ljDirty, isLj, t])
+
   // Live sticks for the Saber Plus come from the system Gamepad API: its own
   // HID node hands raw readers nothing (stub/needs a vendor command), but
   // Windows exposes it as a standard gamepad, so the cross moves with no
@@ -3453,6 +3540,16 @@ export default function App(): JSX.Element {
   }, [design, designKey])
 
   const quantized = design.length >= 2 ? sampleDesign(design, spline) : pts
+  const curveLm = pkt ? stick.linearModule(pkt) : null
+  // Connect's Curve Adjustment. Stick Labs stores custom points in mode 0, so a
+  // non-diagonal mode-0/3 curve is Custom and only a diagonal one is Linear.
+  const curveMode = curveLm?.en && curveTypeHasSlider(curveLm.type) ? curveLm.type : quantized.every((p) => p.x === p.y) ? 0 : 3
+  const curvePreview = curveTypeHasSlider(curveMode) ? connectCurvePreview(curveMode, curveLm?.rate ?? 100, { begin: 0, end: 1000, beginAnti: 0, endAnti: 1000 }).map((p) => ({ x: p.x * 2.55, y: p.y * 2.55 })) : undefined
+  // Live dot: the pad reports processed output, so its height is real and the
+  // input is read back off the line that is drawn (preview or sent curve).
+  const liveLine = curvePreview ?? [{ x: 0, y: 0 }, ...quantized.filter((p) => p.x > 0 && p.x < 255), { x: 255, y: 255 }]
+  const liveOut = live ? stickOutputMagnitude(which === 0 ? live.lx : live.rx, which === 0 ? live.ly : live.ry) : 0
+  const liveDot = live && dz && liveOut >= 0.02 ? dotOnCurve(liveLine, liveOut, dz) : null
   const locked = connected && (!model || model.support !== 'full')
   const modelId = model?.id ?? 'G7ProCE'
   const modelLen = model && model.profileLength > 0 ? model.profileLength : PROFILE_LENGTH
@@ -3516,6 +3613,19 @@ export default function App(): JSX.Element {
       stick.setCurve(pkt, q.map((p) => ({ ...p })))
       stick.markCurveIdentity(pkt)
     })
+  }
+
+  /** Linear and Custom stage points as before; Smooth/Delay keep the points and set Connect's type + strength. */
+  function stageCurveType(type: number): void {
+    if (!pkt) return
+    if (type === 0) { stageDesign([...LINEAR_CURVE]); return }
+    if (type === 3) {
+      const q = sampleDesign(design.length >= 2 ? design : padCurve, spline)
+      edit(() => { stick.setCurve(pkt, q.map((p) => ({ ...p }))); stick.markCurveIdentity(pkt) })
+      return
+    }
+    const rate = stick.linearModule(pkt).rate
+    edit(() => stick.setLinearModule(pkt, true, type, rate))
   }
 
   function stageCleanProfile(): void {
@@ -3752,7 +3862,7 @@ export default function App(): JSX.Element {
                     key={s}
                     className={`choice-btn${s === slot ? ' active' : ''}`}
                     disabled={!connected || busy || locked || calibrationRunning}
-                    onClick={() => void loadSlot(s)}
+                    onClick={() => { if (s === slot || !dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(s) }}
                   >
                     <span className="choice-label">P{s}</span>
                   </button>
@@ -3760,11 +3870,12 @@ export default function App(): JSX.Element {
             {connected && <button
               className="btn sm primary"
               disabled={isLj ? ljBusy || !ljDirty : !connected || !dirty || busy || locked || calibrationRunning}
-              onClick={() => void (isLj ? writeLeadJoyDraft() : write())}
+              onClick={() => { if (isLj) void writeLeadJoyDraft(); else openReview() }}
             >
               {(isLj ? ljBusy : busy) ? t('common.working') : t('top.write')}
             </button>}
             {(isLj ? ljDirty : dirty) && <span className="pill warn">{t('msg.unsaved')}</span>}
+            {review && <WriteReview slot={slot} items={review} busy={busy} onCancel={() => setReview(null)} onWrite={() => { setReview(null); void write() }} />}
             {!(isLj ? ljDirty : dirty) && savedAt && savedAt.slot === (isLj ? ljSlot + 1 : slot) && (
               <span className="pill good" title={t('msg.verifiedTitle')}>
                 {t('msg.saved')} {new Date(savedAt.at).toLocaleTimeString()}
@@ -3809,7 +3920,7 @@ export default function App(): JSX.Element {
           )}
           {isLj && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12 }}>
+              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' ? 'none' : undefined }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
                     <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
@@ -3905,7 +4016,7 @@ export default function App(): JSX.Element {
           )}
           {connected && profile && pkt && dz && fd && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12 }}>
+              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' ? 'none' : undefined }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
                     <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
@@ -4014,6 +4125,13 @@ export default function App(): JSX.Element {
                       <Slider label={t('sticks.floorLabel')} value={dz.beginAnti / 10} min={0} max={50} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
                       <Slider label={t('sticks.ceilingLabel')} value={dz.endAnti / 10} min={50} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), endAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
                     </div>
+                    <div className="axis-scale">
+                      <Slider label={t('sticks.axisScale')} value={stick.axisScale(pkt)} min={0} max={100} step={1} disabled={!AXIS_SCALE_VERIFIED} onChange={(v) => edit(() => stick.setAxisScale(pkt, which === 0 ? 0 : 1, v))}
+                        format={(v) => v === 50 ? t('sticks.axisBalanced') : `${v} · ${t(v < 50 ? 'sticks.axisHorizontal' : 'sticks.axisVertical')}`} />
+                      <div className="row spread axis-scale-ends"><span>{t('sticks.axisHorizontal')}</span><span>{t('sticks.axisVertical')}</span></div>
+                      <p className="stick-intro">{t(AXIS_SCALE_VERIFIED ? 'sticks.axisScaleHint' : 'sticks.axisScalePending')}</p>
+                      {AXIS_SCALE_VERIFIED && stick.axisScale(pkt) !== 50 && <button type="button" className="btn sm ghost" onClick={() => edit(() => stick.setAxisScale(pkt, which === 0 ? 0 : 1, 50))}>{t('sticks.axisReset')}</button>}
+                    </div>
 </div></div>
                 </div>
               </>}
@@ -4023,9 +4141,18 @@ export default function App(): JSX.Element {
                     <h3>{t('sticks.curve')} — {design.length} {t('sticks.points')}</h3>
                     <Hint>{t('sticks.curveHint')}</Hint>
                     <SplineControl enabled={spline} slots={5} onChange={enabled => { setSplineModes(prev => ({ ...prev, [splineKey]: enabled })); stageDesign(design.length >= 2 ? design : padCurve, enabled) }} />
+<div className="curve-adjust">
+                      <span className="label">{t('sticks.curveAdjust')}</span>
+                      <div className="choice" role="group" aria-label={t('sticks.curveAdjust')}>
+                        {CURVE_TYPES.map((c) => <button type="button" key={c.id} className={`choice-btn${curveMode === c.id ? ' active' : ''}`} aria-pressed={curveMode === c.id} disabled={!pkt || busy} onClick={() => stageCurveType(c.id)}>{t(`sticks.curveType.${c.key}`)}</button>)}
+                      </div>
+                      {pkt && curveTypeHasSlider(curveMode) && <Slider label={t('sticks.curvature')} value={curveLm?.rate ?? 100} min={0} max={100} step={1} onChange={(v) => edit(() => stick.setLinearModule(pkt, true, curveMode, Math.round(v)))} format={(v) => String(Math.round(v))} />}
+                    </div>
 <div className="curve-edit-layout"><div className="curve-graph-panel"><CurvePlot spline={spline} height={320}
+                      preview={curvePreview}
+                      liveDot={liveDot}
                       points={design.length >= 2 ? design : padCurve}
-                      onChange={(next) => stageDesign(next)}
+                      onChange={curvePreview ? undefined : (next) => stageDesign(next)}
                       onAddPoint={(point) => {
                         const base = design.length >= 2 ? design : padCurve
                         const insertAt = base.findIndex((p) => p.x > point.x)
@@ -4036,6 +4163,7 @@ export default function App(): JSX.Element {
                       maxPoints={DESIGN_MAX_POINTS}
                       overlay={quantized}
                     />
+                    {liveDot && <div className="live-dot-note mono" role="status">{t('sticks.liveDot').replace('{in}', String(Math.round(liveDot.x / 2.55))).replace('{out}', String(Math.round(liveOut * 100)))}</div>}
                     <div className="curve-edit-hint"><span className="curve-hint-symbol">↗</span><span>{t('sticks.curveClickHint')}</span></div>
                     <div className="row spread stick-curve-status">
                       <span>{t('sticks.curve')}</span>
@@ -4048,7 +4176,8 @@ export default function App(): JSX.Element {
                       <div style={{ flex: 1 }} />
                       <button className="btn sm ghost" disabled={busy} onClick={() => void reloadCurveFromPad()}>{t('sticks.reload')}</button>
                     </div>
-                    </div><section className="curve-point-editor">
+                    </div><section className={`curve-point-editor${curvePreview ? ' is-inactive' : ''}`} aria-disabled={curvePreview ? true : undefined}>
+                      {curvePreview && <p className="curve-inactive-note" role="status">{t('sticks.pointsInactive')}</p>}
                       <h4>{t('sticks.pointEditor')}</h4>
                       <div className="stick-extra-body">
                     <table className="tbl" style={{ marginTop: 8 }}>

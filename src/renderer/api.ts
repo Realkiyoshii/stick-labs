@@ -64,6 +64,8 @@ interface LabApi {
   ping(count: number): Promise<PingResult>
   openExternal(url: string): Promise<boolean>
   version(): Promise<string>
+  /** Staged edits not yet written, so hide-to-tray and Quit can warn first. */
+  setUnsaved(state: { dirty: boolean; hide?: { message: string; detail: string; confirm: string; cancel: string }; quit?: { message: string; detail: string; confirm: string; cancel: string } }): Promise<boolean>
   /** Self-update state pushed from the main process (no dialogs anywhere). */
   updateStatus(): Promise<{ state: 'idle' | 'checking' | 'downloading' | 'ready' | 'current' | 'error'; version?: string; percent?: number; message?: string }>
   updateCheck(): Promise<boolean>

@@ -654,6 +654,21 @@ export const stick = {
   setFlipY: (p: Packet, on: boolean): void => p.setBit(26, 0, on),
   axisRatio: (p: Packet): number => p.u8(27),
   setAxisRatio: (p: Packet, v: number): void => p.setU8(27, v),
+  /** Ratio the firmware applies: an unmapped stick behaves as balanced (50). */
+  axisScale: (p: Packet): number => (stick.mapped(p) ? stick.axisRatio(p) : 50),
+  /**
+   * Connect's X/Y sensitivity scale: 0 horizontal only, 50 balanced, 100
+   * vertical only. Connect always writes the map block enabled, so an
+   * unmapped stick gets its own default output (1 left / 2 right); an
+   * existing mapping (e.g. Mouse) is kept.
+   */
+  setAxisScale(p: Packet, side: 0 | 1, ratio: number): void {
+    if (!stick.mapped(p)) {
+      stick.setMapped(p, true)
+      stick.setMapIndex(p, side === 0 ? 1 : 2)
+    }
+    stick.setAxisRatio(p, Math.max(0, Math.min(100, Math.round(ratio))))
+  },
   mapIndex: (p: Packet): number => p.u8(29),
   setMapIndex: (p: Packet, v: number): void => p.setU8(29, v),
 

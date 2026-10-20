@@ -216,6 +216,23 @@ handle('system:openExternal', (url: string) => {
   return true
 })
 handle('system:version', () => app.getVersion())
+// The renderer reports staged-but-unwritten edits (with its own translated
+// wording) so hiding to the tray or quitting can warn first.
+type UnsavedPrompt = { message: string; detail: string; confirm: string; cancel: string }
+let unsaved: { dirty: boolean; hide?: UnsavedPrompt; quit?: UnsavedPrompt } = { dirty: false }
+handle('system:setUnsaved', (state: typeof unsaved) => {
+  unsaved = state && typeof state.dirty === 'boolean' ? state : { dirty: false }
+  return true
+})
+/** True when the user chose to go ahead (or nothing is unsaved). */
+function confirmUnsaved(prompt?: UnsavedPrompt): boolean {
+  if (!unsaved.dirty || !prompt || !window_) return true
+  const choice = dialog.showMessageBoxSync(window_, {
+    type: 'warning', buttons: [prompt.confirm, prompt.cancel], defaultId: 1, cancelId: 1,
+    message: prompt.message, detail: prompt.detail, noLink: true
+  })
+  return choice === 0
+}
 handle('steam:info', () => steamInfo())
 handle('steam:export', (left: { begin: number; end: number }, right: { begin: number; end: number }, mouseRate?: number | null, curveExp?: number | null) =>
   exportApexDeadzones(left, right, mouseRate ?? null, curveExp ?? null)
@@ -340,7 +357,7 @@ app.whenReady().then(() => {
   window_?.on('close', (event) => {
     if (!quitting) {
       event.preventDefault()
-      window_?.hide()
+      if (confirmUnsaved(unsaved.hide)) window_?.hide()
     }
   })
   createTray()
@@ -408,6 +425,10 @@ app.on('window-all-closed', () => {
  */
 app.on('before-quit', (event) => {
   if (quitting) return
+  if (!confirmUnsaved(unsaved.quit)) {
+    event.preventDefault()
+    return
+  }
   quitting = true
   event.preventDefault()
   void (async () => {
