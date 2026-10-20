@@ -1,0 +1,44 @@
+name: web
+
+# Publishes the browser build (dist-web) to GitHub Pages with each release, so
+# the hosted app always matches the latest desktop version. Can also be run by
+# hand from the Actions tab.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # node-hid needs libudev on Linux if it has to build from source.
+      - run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node scripts/test.mjs tests/leadjoy.ts tests/leadjoy-session.ts tests/review.ts tests/curveadjust.ts
+      - run: npm run build:web
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-web
+      - id: deployment
+        uses: actions/deploy-pages@v4

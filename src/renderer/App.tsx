@@ -3914,7 +3914,7 @@ export default function App(): JSX.Element {
           )}
           {err && <div className="note bad">{err}</div>}
           {msg && <div className="note">{msg}</div>}
-          {(isLj ? ljDirty : dirty) && <div className="note warn">{t('msg.dirty')}</div>}
+          {(isLj ? ljDirty : dirty) && <div className="note warn dirty-toast" role="status">{t('msg.dirty')}</div>}
           {!connected && (
             <div className="msg"><h3>{t('msg.connect')}</h3><p>{t('msg.models')} {t('msg.connectBody')}</p></div>
           )}

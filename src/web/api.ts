@@ -11,14 +11,27 @@
  *   - steamInfo/steamExport/steamGames/steamExportAll (Steam config folders)
  *   - deeppoll (kernel ETW trace)
  *   - ping (desktop round-trip harness)
- * LeadJoy support is the next stage; those calls say so plainly rather than
- * pretending.
+ * LeadJoy runs the same session as the desktop (shared/leadjoy-session.ts)
+ * over a WebHID port.
  */
 import { Controller } from '../main/controller'
 import type { DeepPollResult } from '@shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '@shared/leadjoy'
-import type { LiveSample } from '../renderer/api'
-import { WebHidTransport, discoverWeb } from './hid'
+import type { LabApi, LiveSample } from '../renderer/api'
+import { WebHidTransport, discoverWeb, openLjPort } from './hid'
+import { createLjApi, createLjSession } from '@shared/leadjoy-session'
+
+const leadjoyApi = createLjApi(createLjSession(openLjPort))
+
+/** Injected by vite.web.config.ts from package.json. */
+declare const __APP_VERSION__: string
+
+let unsavedEdits = false
+window.addEventListener('beforeunload', (e) => {
+  if (!unsavedEdits) return
+  e.preventDefault()
+  e.returnValue = ''
+})
 
 // The Controller only ever touches the transport surface both classes share.
 const transport = new WebHidTransport()
@@ -148,19 +161,27 @@ const basis = {
     window.open(url, '_blank', 'noopener')
     return Promise.resolve(true)
   },
-  version: () => Promise.resolve('web'),
+  version: () => Promise.resolve(`${__APP_VERSION__} web`),
+  // A hosted page is always the latest build; there is nothing to download.
+  updateStatus: () => Promise.resolve({ state: 'current' as const, version: __APP_VERSION__ }),
+  updateCheck: () => Promise.resolve(true),
+  updateInstall: () => Promise.resolve(false),
   steamInfo: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   steamExport: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   steamGames: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   steamExportAll: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   ping: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   deeppoll: () => Promise.reject(new Error(NOT_IN_BROWSER)) as Promise<DeepPollResult>,
-  leadjoyReadMain: () => Promise.reject(new Error('LeadJoy support is landing next in the browser build.')),
-  leadjoyReadSlot: () => Promise.reject(new Error('LeadJoy support is landing next in the browser build.')),
-  leadjoyWriteButton: (_req: { path: string; slot: number; id: number; target: LjButtonTarget | null }) =>
-    Promise.reject(new Error('LeadJoy support is landing next in the browser build.')),
-  leadjoyWriteStick: (_req: { path: string; slot: number; side: number; patch: LjStickPatch }) =>
-    Promise.reject(new Error('LeadJoy support is landing next in the browser build.')),
+  leadjoyReadMain: (path: string) => leadjoyApi.readMain(path),
+  leadjoyReadSlot: (req: { path: string; slot: number }) => leadjoyApi.readSlot(req),
+  leadjoyWriteButton: (req: { path: string; slot: number; id: number; target: LjButtonTarget | null }) => leadjoyApi.writeButton(req),
+  leadjoyWriteStick: (req: { path: string; slot: number; side: number; patch: LjStickPatch }) =>
+    leadjoyApi.writeStick({ ...req, patch: req.patch as unknown as Record<string, unknown> }),
+  // Browser stand-in for the tray/Quit prompt: warn before closing the tab.
+  setUnsaved: (state: { dirty: boolean }) => {
+    unsavedEdits = !!state?.dirty
+    return Promise.resolve(true)
+  },
   on: (channel: string, fn: Listener): (() => void) => {
     const set = listeners.get(channel) ?? new Set<Listener>()
     set.add(fn)
@@ -181,6 +202,10 @@ function bytesToB64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
   return btoa(binary)
 }
+
+// Compile-time check: the browser bridge must implement every desktop call.
+const _complete: LabApi = basis
+void _complete
 
 export type WebStickLabApi = typeof basis
 

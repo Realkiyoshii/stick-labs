@@ -17,6 +17,7 @@
  */
 import { REPORT_LENGTH, REPORT_INPUT, REPORT_RESPONSE, VENDOR_ID, VENDOR_USAGE, VENDOR_USAGE_PAGE } from '@shared/protocol'
 import type { Candidate } from '../renderer/api'
+import type { LjPort } from '@shared/leadjoy-session'
 
 // --- minimal WebHID typings (lib.dom ships none) ----------------------------
 interface HidInputReportEvent extends Event {
@@ -95,6 +96,49 @@ export async function discoverWeb(): Promise<Candidate[]> {
     }
   }
   return devices.map((device) => toCandidate(device, pathFor(device)))
+}
+
+/**
+ * LeadJoy port over WebHID, matching the node-hid adapter in main/leadjoy.ts:
+ * unnumbered 64-byte reports (report id 0), queued input, open per session.
+ */
+export async function openLjPort(path: string): Promise<LjPort> {
+  const device = registry.get(path)
+  if (!device) throw new Error('leadjoy: device is no longer granted — pick it again in the browser prompt')
+  try {
+    if (!device.opened) await device.open()
+  } catch (err) {
+    throw new Error(`leadjoy: cannot open device (close the LeadJoy app first) — ${(err as Error).message}`)
+  }
+  const queue: number[][] = []
+  let waiter: ((bytes: number[] | null) => void) | null = null
+  const onReport = (e: HidInputReportEvent): void => {
+    const bytes = Array.from(new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength))
+    if (waiter) {
+      const w = waiter
+      waiter = null
+      w(bytes)
+    } else queue.push(bytes)
+  }
+  device.addEventListener('inputreport', onReport)
+  return {
+    async write(frame) {
+      await device.sendReport(0, Uint8Array.from(frame))
+    },
+    read(timeoutMs) {
+      const next = queue.shift()
+      if (next) return Promise.resolve(next)
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => { waiter = null; resolve(null) }, timeoutMs)
+        waiter = (bytes) => { clearTimeout(timer); resolve(bytes) }
+      })
+    },
+    async close() {
+      device.removeEventListener('inputreport', onReport)
+      if (waiter) { const w = waiter; waiter = null; w(null) }
+      await device.close()
+    }
+  }
 }
 
 export interface WebDeviceStats {

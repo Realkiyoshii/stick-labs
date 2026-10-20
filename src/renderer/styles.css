@@ -1448,3 +1448,6 @@ table.tbl tbody tr:hover {
 .axis-scale { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
 .axis-scale-ends { font-size: 11px; color: var(--text-3); }
 .axis-scale input[type=range]:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Floats so staging an edit never shifts the page under the cursor. */
+.dirty-toast { position: fixed; right: 16px; bottom: 16px; z-index: 900; max-width: min(360px, calc(100vw - 32px)); margin: 0; pointer-events: none; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }

@@ -51,7 +51,7 @@ export interface CalibrationStatus {
   timestamp: number
 }
 
-interface LabApi {
+export interface LabApi {
   discover(): Promise<Candidate[]>
   connect(path: string): Promise<DeviceInfo>
   disconnect(): Promise<boolean>

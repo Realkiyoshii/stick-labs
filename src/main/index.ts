@@ -8,12 +8,14 @@ import { join } from 'node:path'
 import { Controller, type DeviceInfo } from './controller'
 import { Transport } from './hid'
 import { discover, discoverLive } from './hid'
-import { ljReadButtonTable, ljReadMainSnapshot, ljReadSnapshot, ljWriteButtonVerified, ljWriteStickVerified } from './leadjoy'
-import type { LjButtonTarget, LjStickPatch } from '../shared/leadjoy'
-import { ljButtonWriteRecord } from '../shared/leadjoy'
+import { leadjoySession } from './leadjoy'
+import { createLjApi } from '../shared/leadjoy-session'
+import type { LjButtonTarget } from '../shared/leadjoy'
 import { steamInfo, exportApexDeadzones, listInstalledGames, exportDeadzonesToGames } from './steam'
 import { PROFILE_LENGTH, isFineCalibrationStatus } from '../shared/protocol'
 import { runDeepPoll } from './deeppoll'
+
+const leadjoyApi = createLjApi(leadjoySession)
 
 const controller = new Controller(new Transport(), discover)
 let window_: BrowserWindow | null = null
@@ -145,31 +147,13 @@ function handle(channel: string, fn: (...args: any[]) => unknown): void {
 }
 
 handle('device:discover', () => discoverLive())
-handle('leadjoy:readMain', (path: string) => ljReadMainSnapshot(path))
-handle('leadjoy:readSlot', (req: { path: string; slot: number }) => {
-  if (typeof req?.path !== 'string' || req.path.length === 0) throw new Error('leadjoy: refusing read without a device path')
-  if (req.slot !== 0 && req.slot !== 1 && req.slot !== 2) throw new Error(`leadjoy: slot ${req.slot} is not Main/Sub1/Sub2`)
-  return ljReadSnapshot(req.path, req.slot)
-})
-/**
- * LeadJoy extra-button remap (tournament-safe 1:1 only). Target is a button
- * id (A=1 B=2 X=4 Y=5) or null for stock/Origin; anything else is refused
- * here, not just in the UI. Proven path: single-record 61/w write + ack +
- * readback (docs/leadjoy-saber.md).
- */
-handle('leadjoy:writeButton', async (req: { path: string; slot: number; id: number; target: LjButtonTarget | null }) => {
-  const { path, slot, id, target } = req ?? {}
-  if (typeof path !== 'string' || path.length === 0) throw new Error('leadjoy: refusing write without a device path')
-  if (slot !== 0 && slot !== 1 && slot !== 2) throw new Error(`leadjoy: slot ${slot} is not Main/Sub1/Sub2`)
-  return ljWriteButtonVerified(path, slot, ljButtonWriteRecord(id, target))
-})
-handle('leadjoy:writeStick', async (req: { path: string; slot: number; side: number; patch: Record<string, unknown> }) => {
-  const { path, slot, side, patch } = req ?? {}
-  if (typeof path !== 'string' || path.length === 0) throw new Error('leadjoy: refusing write without a device path')
-  if (slot !== 0 && slot !== 1 && slot !== 2) throw new Error(`leadjoy: slot ${slot} is not Main/Sub1/Sub2`)
-  if (side !== 0 && side !== 1) throw new Error(`leadjoy: side ${side} is not left/right`)
-  return ljWriteStickVerified(path, slot, side, (patch ?? {}) as LjStickPatch)
-})
+// LeadJoy calls (checks live in shared/leadjoy-session.ts, shared with the web build).
+// Extra-button remap is tournament-safe 1:1 only; proven path is single-record
+// write + ack + readback (docs/leadjoy-saber.md).
+handle('leadjoy:readMain', (path: string) => leadjoyApi.readMain(path))
+handle('leadjoy:readSlot', (req: { path: string; slot: number }) => leadjoyApi.readSlot(req))
+handle('leadjoy:writeButton', (req: { path: string; slot: number; id: number; target: LjButtonTarget | null }) => leadjoyApi.writeButton(req))
+handle('leadjoy:writeStick', (req: { path: string; slot: number; side: number; patch: Record<string, unknown> }) => leadjoyApi.writeStick(req))
 handle('device:connect', async (path: string): Promise<DeviceInfo> => {
   sessionEpoch++
   lastFineCalibrationStatus = ''
@@ -226,7 +210,10 @@ handle('system:setUnsaved', (state: typeof unsaved) => {
 })
 /** True when the user chose to go ahead (or nothing is unsaved). */
 function confirmUnsaved(prompt?: UnsavedPrompt): boolean {
-  if (!unsaved.dirty || !prompt || !window_) return true
+  if (!unsaved.dirty || !prompt || !window_ || window_.isDestroyed()) return true
+  // Quit from the tray happens while the window is hidden; a dialog owned by a
+  // hidden window can end up invisible, so bring the window back first.
+  if (!window_.isVisible()) showMainWindow()
   const choice = dialog.showMessageBoxSync(window_, {
     type: 'warning', buttons: [prompt.confirm, prompt.cancel], defaultId: 1, cancelId: 1,
     message: prompt.message, detail: prompt.detail, noLink: true
