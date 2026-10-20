@@ -2922,13 +2922,6 @@ export default function App(): JSX.Element {
   const dirtyRef = useRef(false)
   dirtyRef.current = dirty
   const [appVersion, setAppVersion] = useState<string | null>(null)
-  const [showSafety, setShowSafety] = useState(() => {
-    try {
-      return window.localStorage.getItem('sticklabs.seenSafety') !== '1'
-    } catch {
-      return true
-    }
-  })
   // Free-point curve design (2–10 pts). The pad only stores 5, so this is a
   // design canvas — `quantized` is what actually gets written. Persisted per
   // slot+stick so a half-finished shape survives a reload. Spline mode samples
@@ -3885,33 +3878,6 @@ export default function App(): JSX.Element {
         </header>
         <div className="content">
           <div className="content-frame">
-          {showSafety && (
-            <div className="card" style={{ marginBottom: 16, borderColor: 'var(--warn)' }}>
-              <h3>{t('safety.title')}</h3>
-              <div className="stack" style={{ gap: 6, fontSize: 13 }}>
-                <span>1. <strong>{t('safety.backup')}</strong> — Stick profiles card → Backup all → JSON. You can always restore.</span>
-                <span>2. <strong>{t('safety.closeApp')}</strong> — it holds the controller and blocks this app.</span>
-                <span>3. <strong>{t('safety.wired')}</strong> — Bluetooth pads don't appear here, ever.</span>
-                <span>4. <strong>{t('safety.reboot')}</strong> for ~2 seconds. Normal — it reconnects by itself.</span>
-                <span>5. <strong>{t('safety.tournaments')}</strong> — check your event's rules before competing on a tuned profile.</span>
-              </div>
-              <div className="row" style={{ marginTop: 10 }}>
-                <button
-                  className="btn sm primary"
-                  onClick={() => {
-                    try {
-                      window.localStorage.setItem('sticklabs.seenSafety', '1')
-                    } catch {
-                      /* ignore */
-                    }
-                    setShowSafety(false)
-                  }}
-                >
-                  {t('common.gotIt')}
-                </button>
-              </div>
-            </div>
-          )}
           {err && <div className="note bad">{err}</div>}
           {msg && <div className="note">{msg}</div>}
           {(isLj ? ljDirty : dirty) && <div className="note warn dirty-toast" role="status">{t('msg.dirty')}</div>}
