@@ -39,7 +39,7 @@ const groupLabels = CURVE_GROUPS.map((g) => g.curves.map(([, c]) => c.label))
 check(
   'presets split into standard and creator sections',
   JSON.stringify(groupLabels) === JSON.stringify([
-    ['Linear', 'Dynamic (CoD)', 'Micro-aim', 'Flick/Snap', 'Snappy mid', 'Steady track', 'Expo'],
+    ['Linear', 'Dynamic (CoD)', 'Micro-aim', 'Fast & Tight', 'All-Range Track', 'Apex All-Round', 'Flick/Snap', 'Snappy mid', 'Steady track', 'Expo'],
     ['Zamilitox', '7ryuta', 'Kiyoshi Curve', 'Sacreds', 'Machixo', 'Nekosu']
   ])
 )
