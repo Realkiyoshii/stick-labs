@@ -455,6 +455,21 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; creator?:
     hint: 'extra-fine centre for tracking',
     pts: [{ x: 0, y: 0 }, { x: 64, y: 28 }, { x: 128, y: 80 }, { x: 191, y: 170 }, { x: 255, y: 255 }]
   },
+  fastTight: {
+    label: 'Fast & Tight',
+    hint: 'quick micro start, steady tracking, fast edge',
+    pts: [
+      { x: 0, y: 0 },
+      { x: 20, y: 24 },
+      { x: 50, y: 46 },
+      { x: 85, y: 72 },
+      { x: 120, y: 104 },
+      { x: 155, y: 145 },
+      { x: 185, y: 190 },
+      { x: 220, y: 245 },
+      { x: 255, y: 255 }
+    ]
+  },
   flick: {
     label: 'Flick/Snap',
     hint: 'fast start for 180s',
