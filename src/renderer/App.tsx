@@ -470,6 +470,21 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; creator?:
       { x: 255, y: 255 }
     ]
   },
+  allRange: {
+    label: 'All-Range Track',
+    hint: 'fine low end for long range, near 1:1 mid for close strafes, fast edge',
+    pts: [
+      { x: 0, y: 0 },
+      { x: 18, y: 20 },
+      { x: 45, y: 36 },
+      { x: 75, y: 58 },
+      { x: 110, y: 92 },
+      { x: 145, y: 132 },
+      { x: 180, y: 178 },
+      { x: 215, y: 228 },
+      { x: 255, y: 255 }
+    ]
+  },
   flick: {
     label: 'Flick/Snap',
     hint: 'fast start for 180s',
