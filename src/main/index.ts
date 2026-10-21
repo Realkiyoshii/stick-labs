@@ -288,7 +288,8 @@ app.whenReady().then(() => {
     // WebHID for Flydigi Apex 5 (interrupt-OUT reports node-hid cannot send).
     // requestDevice still needs a user gesture; this only stops auto-deny.
     // (cast: Electron's Permission union predates the 'hid' literal.)
-    callback((permission as string) === 'hid')
+    // Clipboard write only (share codes, Copy diagnostics); reading stays denied.
+    callback((permission as string) === 'hid' || permission === 'clipboard-sanitized-write')
   })
   // This is the actual WebHID gate in Electron: without it the device
   // picker comes up empty. GameSir path is unaffected (node-hid).

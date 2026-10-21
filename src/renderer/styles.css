@@ -1451,3 +1451,9 @@ table.tbl tbody tr:hover {
 
 /* Floats so staging an edit never shifts the page under the cursor. */
 .dirty-toast { position: fixed; right: 16px; bottom: 16px; z-index: 900; max-width: min(360px, calc(100vw - 32px)); margin: 0; pointer-events: none; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
+
+/* Share codes (curves and profiles) */
+.share-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; flex: 1; min-width: 0; }
+.share-code-input { flex: 1 1 220px; min-width: 0; font-size: 12px; }
+.share-profile { margin: 12px 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.share-profile h5 { margin: 0 0 6px; }

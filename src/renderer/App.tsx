@@ -6,6 +6,7 @@ import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type Devi
 import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/curveAdjust'
 import { describeProfileChanges, type ReviewItem } from '@shared/review'
 import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
+import { applySharedProfile, decodeCurve, decodeProfile, encodeCurve, encodeProfile, rescaleCurve, ShareCodeError } from '@shared/sharecode'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
 import { identifyModel, identifyLeadJoyName, MODELS, type ControllerModel } from '@shared/models'
@@ -363,6 +364,45 @@ function nextCustomPresetName(existing: string[], template: string): string {
   let name = template.replace('{n}', String(i))
   while (existing.includes(name)) name = template.replace('{n}', String(++i))
   return name
+}
+
+/** Paste box + copy button shared by the curve and profile share rows. */
+function ShareCodeRow({ copyLabel, onCopy, onImport, placeholder, disabled }: {
+  copyLabel: string
+  onCopy: () => Promise<string>
+  onImport: (code: string) => Promise<string>
+  placeholder: string
+  disabled?: boolean
+}): JSX.Element {
+  const t = useT()
+  const [code, setCode] = useState('')
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const run = async (fn: () => Promise<string>): Promise<void> => {
+    try {
+      setNote({ ok: true, text: await fn() })
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof ShareCodeError ? t(`share.err.${e.code}`) : (e as Error).message })
+    }
+  }
+  return (
+    <div className="share-code-row">
+      <button className="btn sm" disabled={disabled} onClick={() => void run(async () => {
+        // Hand the clipboard a pending blob in the click itself: a profile code
+        // may need a slot read first, and writeText after that await loses the
+        // user gesture and is refused.
+        const blob = onCopy().then((text) => new Blob([text], { type: 'text/plain' }))
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })])
+        return t('share.copied')
+      })}>{copyLabel}</button>
+      <input className="input mono share-code-input" value={code} placeholder={placeholder} spellCheck={false} onChange={(e) => { setCode(e.target.value); setNote(null) }} />
+      <button className="btn sm ghost" disabled={disabled || !code.trim()} onClick={() => void run(async () => {
+        const result = await onImport(code)
+        setCode('')
+        return result
+      })}>{t('share.import')}</button>
+      {note && <span className={`pill ${note.ok ? 'good' : 'bad'}`} role="status">{note.text}</span>}
+    </div>
+  )
 }
 
 function SavedCurvePreset({ preset, max = 255, onApply, onRename, onDelete }: {
@@ -1719,6 +1759,7 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
   const [entries, setEntries] = useState<SlotEntry[]>([1, 2, 3, 4].map((index) => ({ index, name: null, bytes: null, loading: false, error: null })))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [shareSlot, setShareSlot] = useState(activeSlot ?? 1)
 
   const update = (index: number, patch: Partial<SlotEntry>): void => {
     setEntries((prev) => prev.map((e) => (e.index === index ? { ...e, ...patch } : e)))
@@ -1876,6 +1917,28 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
     input.click()
   }
 
+  async function copyShareCode(): Promise<string> {
+    const entry = entries.find((e) => e.index === shareSlot)
+    const bytes = entry?.bytes ?? (await readSlot(shareSlot))
+    return encodeProfile(bytes, modelId)
+  }
+  async function importShareCode(code: string): Promise<string> {
+    const shared = await decodeProfile(code)
+    const entry = entries.find((e) => e.index === shareSlot)
+    const current = entry?.bytes ?? (await readSlot(shareSlot))
+    const from = shared.model === modelId ? '' : ` (${shared.model === 'T3CE' ? 'Tarantula 8K' : 'G7 Pro 8K'})`
+    if (!window.confirm(t('share.confirmProfile').replace('{name}', shared.name || t('profiles.unnamed')).replace('{from}', from).replace('{slot}', `P${shareSlot}`))) return t('share.cancelled')
+    const bytes = applySharedProfile(current, modelId, shared)
+    setBusy(true)
+    try {
+      const result = await api().writeProfile(shareSlot, bytesToB64(bytes), modelLen)
+      if (!result.verified) throw new Error(result.rolledBack ? 'rejected — previous contents restored' : 'did not verify')
+      await readSlot(shareSlot)
+      return t('share.profileImported').replace('{slot}', `P${shareSlot}`)
+    } finally {
+      setBusy(false)
+    }
+  }
   if (!connected) return <div className="note">{t('profiles.needConn')}</div>
   if (locked) {
     return (
@@ -1896,6 +1959,16 @@ function ProfilesPanel({ connected, activeSlot, locked, modelId, modelLen, dumpL
         <button className="btn sm" disabled={busy} onClick={() => void backupAll()}>{t('profiles.backup')}</button>
         <button className="btn sm" disabled={busy} onClick={restoreAll}>{t('profiles.restore')}</button>
         {message && <span className="pill">{message}</span>}
+      </div>
+      <div className="share-profile">
+        <h5>{t('share.profileTitle')}</h5>
+        <Hint>{t('share.profileHint')}</Hint>
+        <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+          <select className="input" style={{ width: 90 }} disabled={busy} value={shareSlot} onChange={(e) => setShareSlot(Number(e.target.value))}>
+            {[1, 2, 3, 4].map((s) => <option key={s} value={s}>P{s}</option>)}
+          </select>
+          <ShareCodeRow disabled={busy} copyLabel={t('share.copyProfile')} placeholder={t('share.pasteProfile')} onCopy={copyShareCode} onImport={importShareCode} />
+        </div>
       </div>
       <table className="tbl">
         <thead><tr><th>{t('profiles.slot')}</th><th>{t('profiles.name')}</th><th>{t('profiles.active')}</th><th>{t('profiles.actions')}</th></tr></thead>
@@ -2811,6 +2884,21 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
       <div className="row wrap" style={{ gap: 8 }}>
         <button className="btn sm" disabled title={t('lj.fixedPoints')}>{t('sticks.addPoint')} (8/8)</button>
       </div>
+      <h5 style={{ marginTop: 14 }}>{t('share.curveTitle')}</h5>
+      <ShareCodeRow
+        copyLabel={t('share.copyCurve')}
+        placeholder={t('share.pasteCurve')}
+        onCopy={async () => encodeCurve({ scale: 1000, pts: designPoints })}
+        onImport={async (code) => {
+          const shared = decodeCurve(code)
+          // An 8-point LeadJoy design lands as-is; anything else is resampled like the built-in presets.
+          const pts = shared.scale === 1000 && shared.pts.length === 8 ? shared.pts : toPts(ljSampleDesign(rescaleCurve(shared.pts, shared.scale, 255), zones))
+          stageCurve(pts)
+          const name = shared.name && !presets.some((p) => p.name === shared.name) ? shared.name : nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName'))
+          setPresets((prev) => [{ name, pts: pts.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
+          return t('share.curveImported').replace('{name}', name)
+        }}
+      />
         </div>
       </section>
       </div>
@@ -4260,6 +4348,20 @@ export default function App(): JSX.Element {
                         {t('sticks.resetCurve')}
                       </button>
                     </div>
+                    <h5 style={{ marginTop: 14 }}>{t('share.curveTitle')}</h5>
+                    <ShareCodeRow
+                      copyLabel={t('share.copyCurve')}
+                      placeholder={t('share.pasteCurve')}
+                      onCopy={async () => encodeCurve({ scale: 255, pts: design })}
+                      onImport={async (code) => {
+                        const shared = decodeCurve(code)
+                        const pts = rescaleCurve(shared.pts, shared.scale, 255)
+                        stageDesign(pts)
+                        const name = shared.name && !presets.some((p) => p.name === shared.name) ? shared.name : nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName'))
+                        setPresets((prev) => [{ name, pts: pts.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
+                        return t('share.curveImported').replace('{name}', name)
+                      }}
+                    />
                       </div>
                     </section>
                     </div>
