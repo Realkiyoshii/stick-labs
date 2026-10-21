@@ -485,6 +485,21 @@ export const AIM_CURVES: Record<string, { label: string; hint: string; creator?:
       { x: 255, y: 255 }
     ]
   },
+  apexAllRound: {
+    label: 'Apex All-Round',
+    hint: 'near-linear for in-game Linear 4/3: zero at rest, soft start, steady mid',
+    pts: [
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+      { x: 10, y: 13 },
+      { x: 40, y: 42 },
+      { x: 88, y: 88 },
+      { x: 136, y: 134 },
+      { x: 184, y: 182 },
+      { x: 224, y: 224 },
+      { x: 255, y: 255 }
+    ]
+  },
   flick: {
     label: 'Flick/Snap',
     hint: 'fast start for 180s',
