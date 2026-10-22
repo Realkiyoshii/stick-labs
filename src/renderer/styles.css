@@ -179,6 +179,7 @@ textarea {
 }
 
 .brand-copy { min-width: 0; }
+.brand-mark { width: 26px; height: 26px; flex: 0 0 auto; margin-right: 10px; color: var(--text-1, #e5e7eb); overflow: visible; }
 
 .brand h1 {
   margin: 0;

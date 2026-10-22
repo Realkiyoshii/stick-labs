@@ -4086,6 +4086,11 @@ export default function App(): JSX.Element {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
+          <svg className="brand-mark" viewBox="18 18 104 104" aria-hidden="true">
+            <circle cx="70" cy="70" r="46" fill="none" stroke="currentColor" strokeWidth="7" strokeDasharray="250 39" transform="rotate(-21 70 70)" />
+            <path d="M36,104 C74,104 66,36 106,32" fill="none" stroke="var(--accent)" strokeWidth="12" strokeLinecap="round" />
+            <circle cx="106" cy="32" r="10" fill="var(--accent)" />
+          </svg>
           <div className="brand-copy">
             <h1>Stick <span>Labs</span></h1>
           </div>

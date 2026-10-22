@@ -1,26 +1,55 @@
-"""Stick Labs icon: dark rounded tile, orange outer ring, blue crosshair + dot."""
+"""Stick Labs icon: dark rounded tile, light stick ring with a gap, green S-curve breaking out."""
+import base64
+import io
+
 from PIL import Image, ImageDraw
 
-S = 256
-img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-d = ImageDraw.Draw(img)
+TILE = (13, 15, 18, 255)
+RING = (229, 231, 235, 255)
+GREEN = (34, 197, 94, 255)
 
-# rounded tile
-d.rounded_rectangle([4, 4, S - 4, S - 4], radius=52, fill=(11, 13, 18, 255))
 
-cx = cy = S // 2
-# orange outer ring (outer threshold nod)
-d.ellipse([cx - 88, cy - 88, cx + 88, cy + 88], outline=(245, 181, 68, 255), width=10)
-# blue crosshair circle
-d.ellipse([cx - 58, cy - 58, cx + 58, cy + 58], outline=(79, 157, 255, 255), width=9)
-# crosshair ticks
-d.line([cx - 78, cy, cx - 64, cy], fill=(139, 147, 167, 255), width=7)
-d.line([cx + 64, cy, cx + 78, cy], fill=(139, 147, 167, 255), width=7)
-d.line([cx, cy - 78, cx, cy - 64], fill=(139, 147, 167, 255), width=7)
-d.line([cx, cy + 64, cx, cy + 78], fill=(139, 147, 167, 255), width=7)
-# center stick dot
-d.ellipse([cx - 17, cy - 17, cx + 17, cy + 17], fill=(79, 157, 255, 255))
+def bezier(p0, p1, p2, p3, n=400):
+    for i in range(n + 1):
+        t = i / n
+        u = 1 - t
+        yield (u**3 * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
+               u**3 * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1])
 
-img.save("build/icon.png")
-img.save("build/icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+
+def render(size, bold=False):
+    """Drawn on a 140-unit grid (same as the SVG mark), 8x supersampled."""
+    k = size * 8 / 140
+    img = Image.new("RGBA", (size * 8, size * 8), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, 140 * k - 1, 140 * k - 1], radius=30 * k, fill=TILE)
+    ring, curve, dot = (9, 14, 11) if bold else (5, 9, 8)
+    r = 46
+    d.arc([(70 - r) * k, (70 - r) * k, (70 + r) * k, (70 + r) * k], start=-21, end=290, fill=RING, width=round(ring * k))
+    pts = list(bezier((36, 104), (74, 104), (66, 36), (106, 32)))
+    w = curve * k
+    # stamp round dots along the densely sampled path: a smooth, round-capped stroke
+    for x, y in pts:
+        d.ellipse([x * k - w / 2, y * k - w / 2, x * k + w / 2, y * k + w / 2], fill=GREEN)
+    x, y = pts[-1]
+    d.ellipse([(x - dot) * k, (y - dot) * k, (x + dot) * k, (y + dot) * k], fill=GREEN)
+    return img.resize((size, size), Image.LANCZOS)
+
+
+big = render(256)
+big.save("build/icon.png")
+big.save("src/web/icon.png")
+sizes = [16, 24, 32, 48, 64, 128, 256]
+frames = [render(s, bold=s <= 32) for s in sizes]
+for path in ("build/icon.ico", "src/web/icon.ico"):
+    frames[-1].save(path, format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
+
+buf = io.BytesIO()
+big.save(buf, format="PNG", optimize=True)
+b64 = base64.b64encode(buf.getvalue()).decode()
+with open("src/main/trayIcon.ts", "w", encoding="utf-8", newline="\n") as f:
+    f.write("﻿// Tray icon, embedded from build/icon.png so the close-to-tray icon exists in dev and\n")
+    f.write("// in the packaged app alike (build/ resources are not guaranteed inside the asar).\n")
+    f.write("// Regenerate with scripts/make-icon.py.\n")
+    f.write(f"export const TRAY_ICON_PNG_BASE64 =\n  '{b64}'\n")
 print("icon written")
