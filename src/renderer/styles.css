@@ -1559,7 +1559,6 @@ table.tbl tbody tr:hover {
 .nav-group h4 { margin: 14px 12px 6px; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
 .nav-item .nav-icon { flex: 0 0 auto; opacity: .85; }
 .nav-item.active .nav-icon { opacity: 1; color: var(--good); }
-.overview-alert { margin: 0 0 18px; padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid rgba(232, 179, 86, .35); background: rgba(232, 179, 86, .08); color: var(--warn); font-size: 13px; }
 .overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
 .overview-tile {
   display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 12px; row-gap: 6px; align-items: center;
@@ -1569,9 +1568,7 @@ table.tbl tbody tr:hover {
   transition: border-color .15s, transform .15s;
 }
 .overview-tile:hover { border-color: var(--line-2); transform: translateY(-1px); }
-.overview-tile.warn { border-color: rgba(232, 179, 86, .5); }
 .overview-tile-icon { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(62, 207, 142, .1); color: var(--good); }
-.overview-tile.warn .overview-tile-icon { background: rgba(232, 179, 86, .12); color: var(--warn); }
 .overview-tile-label { font-size: 12px; color: var(--text-3); }
 .overview-tile-value { font-size: 18px; font-weight: 650; }
 .overview-tile-value .curve-mini-icon { width: 64px; height: 40px; }

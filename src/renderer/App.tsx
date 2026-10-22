@@ -595,9 +595,8 @@ function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
   const bits = fun.extend.stickResolutionBits(profile.funData)
   const hold = holdKeyOf(profile)
   const dz = (i: number): string => `${(stick.deadzone(profile.sticks[i]).begin / 10).toFixed(1)}%`
-  const warn = (hz !== undefined && hz < 8000) || bits < 12
-  const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device' | 'shift', bad = false): JSX.Element => (
-    <button key={key} type="button" className={`overview-tile${bad ? ' warn' : ''}`} onClick={() => onOpen(tab)}>
+  const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device' | 'shift'): JSX.Element => (
+    <button key={key} type="button" className="overview-tile" onClick={() => onOpen(tab)}>
       <span className="overview-tile-icon"><NavIcon kind={icon} size={20} /></span>
       <span className="overview-tile-label">{label}</span>
       <strong className="overview-tile-value">{value}</strong>
@@ -606,10 +605,9 @@ function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
   return (
     <div className="overview">
       <div className="tuning-page-heading"><h2>{modelName}</h2><p>{t('overview.sub').replace('{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{fw}', firmware ?? '—')}</p></div>
-      {warn && <div className="overview-alert">{t('overview.warn')}</div>}
       <div className="overview-grid">
-        {tile('poll', 'polling', t('overview.polling'), hz ? (hz >= 1000 ? `${hz / 1000}K Hz` : `${hz} Hz`) : `gear ${gear}`, 'device', hz !== undefined && hz < 8000)}
-        {tile('bits', 'bits', t('overview.bits'), `${bits}-bit`, 'device', bits < 12)}
+        {tile('poll', 'polling', t('overview.polling'), hz ? (hz >= 1000 ? `${hz / 1000}K Hz` : `${hz} Hz`) : `gear ${gear}`, 'device')}
+        {tile('bits', 'bits', t('overview.bits'), `${bits}-bit`, 'device')}
         {tile('lc', 'curves', t('overview.leftCurve'), <CurveMiniIcon points={stick.curve(profile.sticks[0])} />, 'curves')}
         {tile('rc', 'curves', t('overview.rightCurve'), <CurveMiniIcon points={stick.curve(profile.sticks[1])} />, 'curves')}
         {tile('dz', 'deadzone', t('overview.deadzones'), `L ${dz(0)} · R ${dz(1)}`, 'sticks')}
