@@ -2235,6 +2235,20 @@ const ARROW_DOWN = '10,14.5 14.5,8 5.5,8'
 const ARROW_LEFT = '5.5,10 12,5.5 12,14.5'
 const ARROW_RIGHT = '14.5,10 8,5.5 8,14.5'
 
+/** Big Left / Right stick cards: a pad with the chosen stick lit, the name and its click (L3 / R3). */
+function StickCards({ which, onPick }: { which: number; onPick: (i: number) => void }): JSX.Element {
+  const t = useT()
+  return <>{(['left', 'right'] as const).map((side, i) => (
+    <button key={side} type="button" className={`stick-card${i === which ? ' active' : ''}`} aria-pressed={i === which} onClick={() => onPick(i)}>
+      <svg className="stick-card-icon" width="56" height="56" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M7 5.5c-2.4 0-4 2.1-4 4.6v5.2c0 1.5 1 2.7 2.3 2.7 1 0 1.6-.7 2.2-1.5.5-.7 1-1.2 1.9-1.2h5.2c.9 0 1.4.5 1.9 1.2.6.8 1.2 1.5 2.2 1.5 1.3 0 2.3-1.2 2.3-2.7v-5.2c0-2.5-1.6-4.6-4-4.6H7Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" opacity=".55" />
+        {(['left', 'right'] as const).map((s) => <circle key={s} className={s === side ? 'lit' : undefined} cx={s === 'left' ? 9.4 : 14.6} cy="13.4" r="2.3" />)}
+      </svg>
+      <span className="stick-card-text"><strong>{t(side === 'left' ? 'cal.left' : 'cal.right')} {t('sticks.stick')}</strong><span className="stick-click-badge">{side === 'left' ? 'L3' : 'R3'}</span></span>
+    </button>
+  ))}<div style={{ flex: 1 }} /></>
+}
+
 function StickSideIcon({ side, size = 18 }: { side: 'left' | 'right'; size?: number }): JSX.Element {
   return (
     <svg className="stick-side-icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -4307,13 +4321,8 @@ export default function App(): JSX.Element {
           )}
           {isLj && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
-                {(['Left', 'Right'] as const).map((n, i) => (
-                  <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
-                    <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
-                  </button>
-                ))}
-                <div style={{ flex: 1 }} />
+              <div className="stick-selector" style={{ display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
+                <StickCards which={which} onPick={setWhich} />
                 <span className="pill">{modelName} · {(['Main', 'Sub1', 'Sub2'] as const)[ljSlot]}</span>
               </div>
               {!ljSnap && <div className="msg"><h3>{ljBusy ? t('lj.reading') : t('msg.loading')}</h3></div>}
@@ -4403,13 +4412,8 @@ export default function App(): JSX.Element {
           )}
           {connected && profile && pkt && dz && fd && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
-                {(['Left', 'Right'] as const).map((n, i) => (
-                  <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
-                    <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
-                  </button>
-                ))}
-                <div style={{ flex: 1 }} />
+              <div className="stick-selector" style={{ display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
+                <StickCards which={which} onPick={setWhich} />
                 <span className="pill">{resBits}-bit · {bitsToLevels(resBits).toLocaleString()} {t('device.levels')}</span>
               </div>
               {tab === 'sticks' && <>
