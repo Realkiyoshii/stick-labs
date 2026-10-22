@@ -1395,7 +1395,6 @@ table.tbl tbody tr:hover {
 .review-empty { margin: 0; color: var(--text-3); font-size: 13px; }
 .review-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
-.live-dot-note { margin: 6px 0 0; font-size: 12px; color: var(--good); }
 
 .axis-scale { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
 .axis-scale-ends { font-size: 11px; color: var(--text-3); }

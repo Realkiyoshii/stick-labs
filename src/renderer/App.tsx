@@ -4572,7 +4572,6 @@ export default function App(): JSX.Element {
                       maxPoints={DESIGN_MAX_POINTS}
                       overlay={quantized}
                     />
-                    {liveDot && <div className="live-dot-note mono" role="status">{t('sticks.liveDot').replace('{in}', String(Math.round(liveDot.x / 2.55))).replace('{out}', String(Math.round(liveOut * 100)))}</div>}
                     <div className="curve-edit-hint"><span className="curve-hint-symbol">↗</span><span>{t('sticks.curveClickHint')}</span></div>
                     <div className="row spread stick-curve-status">
                       <span>{t('sticks.curve')}</span>

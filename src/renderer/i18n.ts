@@ -249,7 +249,6 @@ const STR: Dict = {
   'review.motion': { en: 'Motion', zh: '体感', ja: 'モーション', ru: 'Гироскоп', "es": "Movimiento", "fr": "Mouvement" },
   'review.other': { en: 'Other profile data', zh: '其他配置数据', ja: 'その他のプロファイルデータ', ru: 'Прочие данные профиля', "es": "Otros datos del perfil", "fr": "Autres données du profil" },
   'review.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル', ru: 'Отмена', "es": "Cancelar", "fr": "Annuler" },
-  'sticks.liveDot': { en: 'Live: input ≈ {in}% → output {out}%', zh: '实时：输入 ≈ {in}% → 输出 {out}%', ja: 'ライブ：入力 ≈ {in}% → 出力 {out}%', ru: 'Сейчас: ввод ≈ {in}% → вывод {out}%', "es": "En directo: entrada ≈ {in} % → salida {out} %", "fr": "En direct : entrée ≈ {in} % → sortie {out} %" },
   'sticks.axisScale': { en: 'X/Y sensitivity scale', zh: 'XY轴比例', ja: 'X/Y 感度スケール', ru: 'Шкала чувствительности X/Y', "es": "Escala de sensibilidad X/Y", "fr": "Échelle de sensibilité X/Y" },
   'sticks.axisHorizontal': { en: 'Horizontal', zh: '水平', ja: '水平', ru: 'Горизонталь', "es": "Horizontal", "fr": "Horizontal" },
   'sticks.axisVertical': { en: 'Vertical', zh: '垂直', ja: '垂直', ru: 'Вертикаль', "es": "Vertical", "fr": "Vertical" },
