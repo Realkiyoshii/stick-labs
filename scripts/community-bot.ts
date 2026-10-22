@@ -83,10 +83,8 @@ async function validate(n: number): Promise<void> {
   if (issue.state === 'closed' && !has(issue, 'rejected')) return console.log(`#${n}: closed, skipping`)
 
   const { curve, errors } = readSubmission(issue)
-  const user = await gh<{ created_at: string; type: string }>(`/users/${encodeURIComponent(issue.user.login)}`)
-  const ageDays = (Date.now() - Date.parse(user.created_at)) / 86_400_000
+  const user = await gh<{ type: string }>(`/users/${encodeURIComponent(issue.user.login)}`)
   if (user.type !== 'User') errors.push('Only personal GitHub accounts can post curves.')
-  if (ageDays < COMMUNITY_LIMITS.minAccountAgeDays) errors.push(`Your GitHub account must be at least ${COMMUNITY_LIMITS.minAccountAgeDays} days old.`)
 
   const others = (await liveIssues()).filter((i) => i.number !== n)
   const mine = others.filter((i) => i.user.login === issue.user.login)

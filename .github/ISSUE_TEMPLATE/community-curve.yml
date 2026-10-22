@@ -8,7 +8,7 @@ body:
       value: |
         Your curve shows up in **Community curves** in the Stick Labs app and the web app about a minute after you submit.
         A bot checks it first: a valid curve code, a clean name, and not a copy of a curve that's already posted.
-        Limits: 5 curves a day and 50 in total per person, and your GitHub account must be at least 7 days old.
+        Limits: 5 curves a day and 50 in total per person.
         Likes and reports are 👍 and 👎 reactions on this page. A curve with too many 👎 reactions is hidden automatically.
   - type: input
     id: name

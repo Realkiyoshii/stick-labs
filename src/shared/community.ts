@@ -31,7 +31,6 @@ export const COMMUNITY_GAMES = [
 export const COMMUNITY_LIMITS = {
   perDay: 5,
   perAuthor: 50,
-  minAccountAgeDays: 7,
   /** Hidden once reports reach this and outnumber likes. */
   hideReports: 5,
   feedMax: 5000
