@@ -1,6 +1,6 @@
 import { buildCleanProfile } from '@shared/clean-profile'
 import { capturedKeyTarget, capturedPadTarget, PadCaptureGate, type CaptureFamily } from '@shared/button-capture'
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TriggerSettings } from './TriggerSettings'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/curveAdjust'
@@ -78,6 +78,7 @@ function usePresence<T>(value: T | null, ms = 220): { value: T; leaving: boolean
  */
 function useFlip(ref: React.RefObject<HTMLElement | null>, key: string): void {
   const last = useRef(new Map<string, { x: number; y: number }>())
+  const lastKey = useRef(key)
   useLayoutEffect(() => {
     const box = ref.current
     if (!box) { last.current = new Map(); return }
@@ -88,7 +89,7 @@ function useFlip(ref: React.RefObject<HTMLElement | null>, key: string): void {
       const r = el.getBoundingClientRect()
       next.set(el.dataset.flip ?? '', { x: r.left - origin.left, y: r.top - origin.top })
     }
-    if (!reduceMotion() && last.current.size) {
+    if (key !== lastKey.current && !reduceMotion() && last.current.size) {
       for (const el of items) {
         const id = el.dataset.flip ?? ''
         const before = last.current.get(id)
@@ -101,7 +102,8 @@ function useFlip(ref: React.RefObject<HTMLElement | null>, key: string): void {
       }
     }
     last.current = next
-  }, [key])
+    lastKey.current = key
+  })
 }
 
 /**
@@ -112,7 +114,7 @@ function useFlip(ref: React.RefObject<HTMLElement | null>, key: string): void {
 function useMorph<T extends { x: number; y: number }>(target: T[] | undefined, hold: boolean, ms = 220): T[] | undefined {
   const [shown, setShown] = useState(target)
   const cur = useRef(target)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const from = cur.current
     const changed = from && target && from.length === target.length ? target.filter((p, i) => p.x !== from[i].x || p.y !== from[i].y).length : 0
     if (!from || !target || hold || changed < 2 || reduceMotion()) { cur.current = target; setShown(target); return }
@@ -3515,7 +3517,7 @@ export default function App(): JSX.Element {
   const [lang, setLang] = useLangState()
   const [theme, setTheme] = useThemeState()
   const t = (key: string): string => tr(lang, key)
-  const [, force] = useState(0)
+  const [editRev, force] = useState(0)
   const bump = (): void => {
     setDirty(true)
     force((n) => n + 1)
@@ -4247,7 +4249,8 @@ export default function App(): JSX.Element {
     return () => window.clearTimeout(id)
   }, [savedAt])
   const staged = connected && (isLj ? ljDirty : dirty)
-  const liveCount = staged && !isLj ? changeCount() : null
+  // editRev changes on every edit (the blob is edited in place), so the count follows edits, not live samples.
+  const liveCount = useMemo(() => (staged && !isLj ? changeCount() : null), [staged, isLj, editRev, blob, padBytes, modelId])
   const rolledCount = useTween(liveCount ?? 0, 300, false)
   const bar = usePresence<'staged' | 'writing' | 'saved'>(staged ? (writing ? 'writing' : 'staged') : savedFlash ? 'saved' : null)
   // The sidebar highlight glides to the active item.
