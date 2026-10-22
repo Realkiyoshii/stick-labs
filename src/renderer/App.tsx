@@ -25,7 +25,7 @@ import {
   linFrontier, linTremor, linResolution, linResample, linMedian,
   linRepresentative, linLinearity, LIN_MIN_PASSES
 } from '@shared/sticklab'
-import { keyLabel, displayMapping, REMAP_TARGETS } from '@shared/keymap'
+import { keyLabel, displayMapping, REMAP_TARGETS, SHIFT_KEY, SHIFT_PROFILE } from '@shared/keymap'
 import { createPortal } from 'react-dom'
 import { LANGS, LangContext, tr, useLangState, useT } from './i18n'
 import { THEMES, ThemeContext, useThemeState } from './theme'
@@ -136,7 +136,7 @@ function WriteReview({ slot, items, busy, onCancel, onWrite }: { slot: number; i
   }, [onCancel])
   return <div className="review-backdrop" role="presentation" onClick={onCancel}>
     <div className="review-dialog" role="dialog" aria-modal="true" aria-labelledby="review-title" onClick={(e) => e.stopPropagation()}>
-      <h3 id="review-title">{t('review.title').replace('{slot}', String(slot))}</h3>
+      <h3 id="review-title">{t('review.title').replace('P{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{slot}', String(slot))}</h3>
       {items.length === 0 ? <p className="review-empty">{t('review.none')}</p> : <ul className="review-list">
         {items.map((item, i) => <li key={i}>
           <span className="review-label">{item.stick !== undefined && <b>{t(item.stick === 0 ? 'review.left' : 'review.right')} · </b>}{t(item.key)}</span>
@@ -3489,6 +3489,32 @@ export default function App(): JSX.Element {
     }
   }
 
+  /**
+   * Start the Shift layer from a normal profile (Connect's "sync from master
+   * profile"): stage a copy of P<from> in the editor; Write sends it. Shift
+   * mappings are cleared in the copy so the layer has no Shift key of its own.
+   */
+  async function copyIntoShift(from: number): Promise<void> {
+    setBusy(true)
+    setErr(null)
+    try {
+      const bytes = b64ToBytes((await api().readProfile(from, modelLenRef.current)).bytes)
+      const copy = parseProfile(bytes, modelId)
+      copy.name = 'Shift'
+      for (const b of copy.buttons) if (button.mapValues(b).includes(SHIFT_KEY)) button.setMap(b, [0, 0, 0])
+      // Drop the layer's saved curve designs so the editor redraws from the copy.
+      for (const side of [0, 1]) { try { localStorage.removeItem(`sticklab.design.${SHIFT_PROFILE}.${side}`) } catch { /* editor still reloads */ } }
+      setBlob(serializeProfile(copy))
+      setDirty(true)
+      setLoadId((n) => n + 1)
+      setMsg(t('shift.copied').replace('{slot}', `P${from}`))
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function loadSlot(s: number, len = modelLenRef.current): Promise<void> {
     setBusy(true)
     setMsg(null)
@@ -3536,7 +3562,8 @@ export default function App(): JSX.Element {
         const liveNow = info?.currentProfile
         setSavedAt({ slot, at: Date.now() })
         setDirty(false)
-        if (liveNow !== undefined && liveNow !== slot) {
+        // The Shift layer is never switched to: the pad uses it while the Shift button is held.
+        if (liveNow !== undefined && liveNow !== slot && slot !== SHIFT_PROFILE) {
           // One step: apply by switching onto the written slot, then prove
           // it — the pad may reboot instead of acking, so the live slot is
           // read back (across the reboot window) rather than trusting reply.
@@ -4092,7 +4119,23 @@ export default function App(): JSX.Element {
                   >
                     <span className="choice-label">P{s}</span>
                   </button>
-                )))}
+                )).concat(
+                  <button
+                    key="shift"
+                    className={`choice-btn${slot === SHIFT_PROFILE ? ' active' : ''}`}
+                    title={t('shift.slotTitle')}
+                    disabled={!connected || busy || locked || calibrationRunning}
+                    onClick={() => { if (slot === SHIFT_PROFILE || !dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(SHIFT_PROFILE) }}
+                  >
+                    <span className="choice-label">Shift</span>
+                  </button>
+                ))}
+            {connected && !isLj && slot === SHIFT_PROFILE && <>
+              <span className="pill warn" title={t('shift.slotTitle')}>{t('shift.editing')}</span>
+              <button className="btn sm ghost" title={t('shift.copyTitle')} disabled={busy || locked || calibrationRunning} onClick={() => void copyIntoShift(info?.currentProfile && info.currentProfile <= 4 ? info.currentProfile : 1)}>
+                {t('shift.copy').replace('{slot}', `P${info?.currentProfile && info.currentProfile <= 4 ? info.currentProfile : 1}`)}
+              </button>
+            </>}
             {connected && <button
               className="btn sm primary"
               disabled={isLj ? ljBusy || !ljDirty : !connected || !dirty || busy || locked || calibrationRunning}
@@ -4609,7 +4652,7 @@ export default function App(): JSX.Element {
             <RemapWorkspace
               captureFamily="gamesir"
               disabled={busy || locked}
-              help={<>{t('buttons.hint')}<br /><br />{t('buttons.backs')}{modelId === 'G7ProCE' && (<><br /><br />{t('buttons.backsExtra')}</>)}{modelId === 'T3CE' && (<><br /><br />{t('buttons.frontExtra')}<br /><br />{t('buttons.tExtra')}</>)}</>}
+              help={<>{t('buttons.hint')}<br /><br />{t('shift.buttonsHint')}<br /><br />{t('buttons.backs')}{modelId === 'G7ProCE' && (<><br /><br />{t('buttons.backsExtra')}</>)}{modelId === 'T3CE' && (<><br /><br />{t('buttons.frontExtra')}<br /><br />{t('buttons.tExtra')}</>)}</>}
               rows={([
                 ...STANDARD_BUTTONS.map((name, i) => ({ name: keyLabel(i + 1), value: i + 1, pkt: profile.buttons[i] ?? null as Packet | null })),
                     ...(profile.functionKeys[0] && profile.functionKeys[0].length === 169

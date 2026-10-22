@@ -73,10 +73,10 @@ function blankButton(): Packet {
 
 // tournament-safe target list: single controller + keyboard keys
 {
-  check('127 targets (0–20 + 50–155)', REMAP_TARGETS.length === 127)
+  check('128 targets (0–20 + 50–155 + Shift)', REMAP_TARGETS.length === 128 && REMAP_TARGETS.some((k) => k.value === 231))
   check('controller targets present', [0, 1, 16, 17, 20].every((v) => REMAP_TARGETS.some((k) => k.value === v)))
   check('every keyboard key present', Array.from({ length: 106 }, (_, i) => i + 50).every((v) => REMAP_TARGETS.some((k) => k.value === v)))
-  check('no mouse/special targets', REMAP_TARGETS.every((k) => k.group === 'none' || k.group === 'controller' || k.group === 'function' || k.group === 'keyboard'))
+  check('no mouse/special targets except Shift', REMAP_TARGETS.every((k) => k.group === 'none' || k.group === 'controller' || k.group === 'function' || k.group === 'keyboard' || k.value === 231))
 }
 
 // keyboard target write path (Camera -> T, the hardware-verified case)

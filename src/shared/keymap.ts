@@ -238,6 +238,10 @@ export const KEY_TARGETS: KeyTarget[] = [
   ...build(SPECIAL, 'special')
 ]
 
+/** Remap value for the Shift key; the Shift layer itself is profile 5. */
+export const SHIFT_KEY = 231
+export const SHIFT_PROFILE = 5
+
 const BY_VALUE = new Map(KEY_TARGETS.map((k) => [k.value, k]))
 
 export function keyLabel(value: number): string {
@@ -250,13 +254,14 @@ export function keyGroup(value: number): KeyGroup {
 }
 
 /**
- * Targets this app offers: single controller keys (0–20) plus every
- * keyboard key (50–155). One press in, one press out — no multi-maps, no
- * macros, no turbo. Mouse/special stay out (unneeded attack surface for a
+ * Targets this app offers: single controller keys (0–20), every keyboard
+ * key (50–155) and Shift (231: hold to use the Shift layer, profile 5).
+ * One press in, one press out — no multi-maps, no macros, no turbo.
+ * Mouse and the other specials stay out (unneeded attack surface for a
  * tuning app; the bytes would work the same way).
  */
 export const REMAP_TARGETS: KeyTarget[] = KEY_TARGETS.filter(
-  (k) => k.value <= 20 || (k.value >= 50 && k.value <= 155)
+  (k) => k.value <= 20 || (k.value >= 50 && k.value <= 155) || k.value === SHIFT_KEY
 )
 
 /** Human-readable mapping, e.g. `A` or `A + B` or `—`. */
