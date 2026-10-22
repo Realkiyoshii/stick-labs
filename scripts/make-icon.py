@@ -1,4 +1,4 @@
-"""Stick Labs icon: dark rounded tile, light stick ring with a gap, green S-curve breaking out."""
+"""Stick Labs icon: dark rounded tile, light stick ring with a gap, green S breaking out of it."""
 import base64
 import io
 
@@ -23,15 +23,17 @@ def render(size, bold=False):
     img = Image.new("RGBA", (size * 8, size * 8), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([0, 0, 140 * k - 1, 140 * k - 1], radius=30 * k, fill=TILE)
-    ring, curve, dot = (9, 14, 11) if bold else (5, 9, 8)
+    ring, curve, dot = (9, 15, 11) if bold else (5, 11, 8.5)
     r = 46
     d.arc([(70 - r) * k, (70 - r) * k, (70 + r) * k, (70 + r) * k], start=-21, end=290, fill=RING, width=round(ring * k))
-    pts = list(bezier((36, 104), (74, 104), (66, 36), (106, 32)))
+    # the S: top bowl from the gap, across the middle, bottom bowl to bottom-left
+    segs = [((100, 38), (84, 26), (52, 30), (52, 48)), ((52, 48), (52, 66), (88, 64), (88, 88)), ((88, 88), (88, 110), (56, 112), (42, 100))]
+    pts = [q for seg in segs for q in bezier(*seg)]
     w = curve * k
     # stamp round dots along the densely sampled path: a smooth, round-capped stroke
     for x, y in pts:
         d.ellipse([x * k - w / 2, y * k - w / 2, x * k + w / 2, y * k + w / 2], fill=GREEN)
-    x, y = pts[-1]
+    x, y = pts[0]
     d.ellipse([(x - dot) * k, (y - dot) * k, (x + dot) * k, (y + dot) * k], fill=GREEN)
     return img.resize((size, size), Image.LANCZOS)
 

@@ -7,7 +7,7 @@ import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/cu
 import { describeProfileChanges, type ReviewItem } from '@shared/review'
 import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
 import { applySharedProfile, decodeCurve, decodeProfile, encodeCurve, encodeProfile, rescaleCurve, ShareCodeError } from '@shared/sharecode'
-import { holdKeepsOriginal, holdKeysOf, HOLD_KEYS, setHoldKeys, type HoldKey } from '@shared/shiftlayer'
+import { holdKeysOf, HOLD_KEYS, setHoldKeys, type HoldKey } from '@shared/shiftlayer'
 import { COMMUNITY_FEED_URL, COMMUNITY_GAMES, curvePageUrl, filterCurves, parseFeed, submitUrl, to255, type CommunityCurve, type CommunitySort } from '@shared/community'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
@@ -501,15 +501,14 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
 /**
  * Shift layer (GameSir 8K firmware): while a key bound to Shift (231) is
  * held, the pad uses profile 5 instead of the active profile. Several keys can
- * be Shift at once, and each can keep its own output (multi-bind "L2 + Shift").
+ * be Shift at once; each always keeps its own output (multi-bind "L2 + Shift").
  */
-function ShiftLayerPanel({ editingLayer, normalSlot, holdKeys, keepOriginal, disabled, onHold, onEditLayer, onBack, onCopy }: {
+function ShiftLayerPanel({ editingLayer, normalSlot, holdKeys, disabled, onHold, onEditLayer, onBack, onCopy }: {
   editingLayer: boolean
   normalSlot: number
   holdKeys: HoldKey[]
-  keepOriginal: boolean
   disabled: boolean
-  onHold: (keys: HoldKey[], keep: boolean) => void
+  onHold: (keys: HoldKey[]) => void
   onEditLayer: () => void
   onBack: () => void
   onCopy: () => void
@@ -528,17 +527,13 @@ function ShiftLayerPanel({ editingLayer, normalSlot, holdKeys, keepOriginal, dis
         ) : (
           <>
             <div className="choice" style={{ margin: '10px 0' }}>
-              <button className={`choice-btn${holdKeys.length === 0 ? ' active' : ''}`} disabled={disabled} onClick={() => onHold([], keepOriginal)}><span className="choice-label">{t('hold.off')}</span></button>
+              <button className={`choice-btn${holdKeys.length === 0 ? ' active' : ''}`} disabled={disabled} onClick={() => onHold([])}><span className="choice-label">{t('hold.off')}</span></button>
               {HOLD_KEYS.map((k) => (
-                <button key={k} className={`choice-btn${holdKeys.includes(k) ? ' active' : ''}`} aria-pressed={holdKeys.includes(k)} disabled={disabled} onClick={() => onHold(toggle(k), keepOriginal)}><span className="choice-label">{k}</span></button>
+                <button key={k} className={`choice-btn${holdKeys.includes(k) ? ' active' : ''}`} aria-pressed={holdKeys.includes(k)} disabled={disabled} onClick={() => onHold(toggle(k))}><span className="choice-label">{k}</span></button>
               ))}
             </div>
             <p className="hint" style={{ margin: '0 0 8px' }}>{t('shiftTab.multi')}</p>
-            <label className="row" style={{ gap: 8, alignItems: 'center' }}>
-              <input type="checkbox" checked={keepOriginal} disabled={disabled || !holdKeys.length} onChange={(e) => onHold(holdKeys, e.target.checked)} />
-              <span>{t('shiftTab.keep').replace(/\{key\}/g, keyText || 'L2')}</span>
-            </label>
-            <p className="note">{holdKeys.length ? t(keepOriginal ? 'shiftTab.keyOnKeep' : 'shiftTab.keyOnOnly').replace(/\{key\}/g, keyText) : t('shiftTab.keyOff')}</p>
+            <p className="note">{holdKeys.length ? t('shiftTab.keyOnKeep').replace(/\{key\}/g, keyText) : t('shiftTab.keyOff')}</p>
           </>
         )}
       </div>
@@ -4089,8 +4084,8 @@ export default function App(): JSX.Element {
         <div className="brand">
           <svg className="brand-mark" viewBox="18 18 104 104" aria-hidden="true">
             <circle cx="70" cy="70" r="46" fill="none" stroke="currentColor" strokeWidth="7" strokeDasharray="250 39" transform="rotate(-21 70 70)" />
-            <path d="M36,104 C74,104 66,36 106,32" fill="none" stroke="var(--accent)" strokeWidth="12" strokeLinecap="round" />
-            <circle cx="106" cy="32" r="10" fill="var(--accent)" />
+            <path d="M100,38 C84,26 52,30 52,48 C52,66 88,64 88,88 C88,110 56,112 42,100" fill="none" stroke="var(--accent)" strokeWidth="13" strokeLinecap="round" />
+            <circle cx="100" cy="38" r="10" fill="var(--accent)" />
           </svg>
           <div className="brand-copy">
             <h1>Stick <span>Labs</span></h1>
@@ -4805,9 +4800,8 @@ export default function App(): JSX.Element {
               editingLayer={slot === SHIFT_PROFILE}
               normalSlot={normalSlot}
               holdKeys={holdKeysOf(profile)}
-              keepOriginal={(() => { const ks = holdKeysOf(profile); return ks.length ? ks.every((k) => holdKeepsOriginal(profile, k)) : true })()}
               disabled={busy || locked || calibrationRunning}
-              onHold={(keys, keep) => edit(() => setHoldKeys(profile, keys, keep))}
+              onHold={(keys) => edit(() => setHoldKeys(profile, keys, true))}
               onEditLayer={() => { if (!dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(SHIFT_PROFILE) }}
               onBack={() => { if (!dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(normalSlot) }}
               onCopy={() => void copyIntoShift(normalSlot)}

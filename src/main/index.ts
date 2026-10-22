@@ -260,6 +260,8 @@ function createWindow(): void {
     minHeight: 680,
     backgroundColor: '#14090d',
     title: 'Stick Labs',
+    // explicit icon so the title bar and taskbar show it in dev too (not Electron's)
+    icon: nativeImage.createFromDataURL(`data:image/png;base64,${TRAY_ICON_PNG_BASE64}`),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
