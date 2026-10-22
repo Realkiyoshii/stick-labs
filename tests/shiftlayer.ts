@@ -1,6 +1,6 @@
 // Hold-to-switch curve: Shift key mapping on buttons/triggers and the Shift layer build.
 import { readFileSync } from 'node:fs'
-import { buildShiftLayer, holdKeepsOriginal, holdKeyOf, HOLD_KEYS, setHoldKey } from '../src/shared/shiftlayer'
+import { buildShiftLayer, holdKeepsOriginal, holdKeyOf, holdKeysOf, HOLD_KEYS, setHoldKey, setHoldKeys } from '../src/shared/shiftlayer'
 import { button, parseProfile, serializeProfile, stick, trigger } from '../src/shared/profile'
 
 function check(name: string, pass: boolean): void {
@@ -33,6 +33,15 @@ for (const model of ['G7ProCE', 'T3CE']) {
   check(`${model}: L2 + Shift keeps L2 (19) and adds Shift (231)`, kb[geo + 11] === 1 && kb[geo + 12] === 19 && kb[geo + 13] === 231 && holdKeyOf(keep) === 'L2' && holdKeepsOriginal(keep, 'L2'))
   setHoldKey(keep, null)
   check(`${model}: clearing L2 + Shift restores the original bytes`, changed(base, serializeProfile(keep)).length === 0)
+
+  const both = parseProfile(base, model)
+  setHoldKeys(both, ['L2', 'R2'], true)
+  const bb = serializeProfile(both)
+  check(`${model}: L2 and R2 can both be Shift (each keeps its own output)`, bb[geo + 12] === 19 && bb[geo + 13] === 231 && bb[geo + 32 + 12] === 20 && bb[geo + 32 + 13] === 231 && JSON.stringify(holdKeysOf(parseProfile(bb, model))) === '["L2","R2"]')
+  setHoldKeys(both, ['R2'], true)
+  check(`${model}: dropping L2 leaves only R2 as Shift`, JSON.stringify(holdKeysOf(both)) === '["R2"]')
+  setHoldKeys(both, [])
+  check(`${model}: clearing both restores the original bytes`, changed(base, serializeProfile(both)).length === 0)
 
   const off = parseProfile(r2, model)
   setHoldKey(off, null)

@@ -7,7 +7,7 @@ import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/cu
 import { describeProfileChanges, type ReviewItem } from '@shared/review'
 import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
 import { applySharedProfile, decodeCurve, decodeProfile, encodeCurve, encodeProfile, rescaleCurve, ShareCodeError } from '@shared/sharecode'
-import { holdKeepsOriginal, holdKeyOf, HOLD_KEYS, setHoldKey, type HoldKey } from '@shared/shiftlayer'
+import { holdKeepsOriginal, holdKeysOf, HOLD_KEYS, setHoldKeys, type HoldKey } from '@shared/shiftlayer'
 import { COMMUNITY_FEED_URL, COMMUNITY_GAMES, curvePageUrl, filterCurves, parseFeed, submitUrl, to255, type CommunityCurve, type CommunitySort } from '@shared/community'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
@@ -500,22 +500,24 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
 
 /**
  * Shift layer (GameSir 8K firmware): while a key bound to Shift (231) is
- * held, the pad uses profile 5 instead of the active profile. A key can also
- * keep its own output (multi-bind "L2 + Shift") so it still aims.
+ * held, the pad uses profile 5 instead of the active profile. Several keys can
+ * be Shift at once, and each can keep its own output (multi-bind "L2 + Shift").
  */
-function ShiftLayerPanel({ editingLayer, normalSlot, holdKey, keepOriginal, disabled, onHold, onEditLayer, onBack, onCopy }: {
+function ShiftLayerPanel({ editingLayer, normalSlot, holdKeys, keepOriginal, disabled, onHold, onEditLayer, onBack, onCopy }: {
   editingLayer: boolean
   normalSlot: number
-  holdKey: HoldKey | null
+  holdKeys: HoldKey[]
   keepOriginal: boolean
   disabled: boolean
-  onHold: (key: HoldKey | null, keep: boolean) => void
+  onHold: (keys: HoldKey[], keep: boolean) => void
   onEditLayer: () => void
   onBack: () => void
   onCopy: () => void
 }): JSX.Element {
   const t = useT()
   const p = `P${normalSlot}`
+  const keyText = holdKeys.join(' / ')
+  const toggle = (k: HoldKey): HoldKey[] => holdKeys.includes(k) ? holdKeys.filter((x) => x !== k) : HOLD_KEYS.filter((x) => x === k || holdKeys.includes(x))
   return (
     <div className="shift-workspace">
       <div className="tuning-page-heading"><h2>{t('nav.shift')}</h2><p>{t('shiftTab.help')}</p></div>
@@ -526,16 +528,17 @@ function ShiftLayerPanel({ editingLayer, normalSlot, holdKey, keepOriginal, disa
         ) : (
           <>
             <div className="choice" style={{ margin: '10px 0' }}>
-              <button className={`choice-btn${holdKey === null ? ' active' : ''}`} disabled={disabled} onClick={() => onHold(null, keepOriginal)}><span className="choice-label">{t('hold.off')}</span></button>
+              <button className={`choice-btn${holdKeys.length === 0 ? ' active' : ''}`} disabled={disabled} onClick={() => onHold([], keepOriginal)}><span className="choice-label">{t('hold.off')}</span></button>
               {HOLD_KEYS.map((k) => (
-                <button key={k} className={`choice-btn${holdKey === k ? ' active' : ''}`} disabled={disabled} onClick={() => onHold(k, keepOriginal)}><span className="choice-label">{k}</span></button>
+                <button key={k} className={`choice-btn${holdKeys.includes(k) ? ' active' : ''}`} aria-pressed={holdKeys.includes(k)} disabled={disabled} onClick={() => onHold(toggle(k), keepOriginal)}><span className="choice-label">{k}</span></button>
               ))}
             </div>
+            <p className="hint" style={{ margin: '0 0 8px' }}>{t('shiftTab.multi')}</p>
             <label className="row" style={{ gap: 8, alignItems: 'center' }}>
-              <input type="checkbox" checked={keepOriginal} disabled={disabled || !holdKey} onChange={(e) => onHold(holdKey, e.target.checked)} />
-              <span>{t('shiftTab.keep').replace(/\{key\}/g, holdKey ?? 'L2')}</span>
+              <input type="checkbox" checked={keepOriginal} disabled={disabled || !holdKeys.length} onChange={(e) => onHold(holdKeys, e.target.checked)} />
+              <span>{t('shiftTab.keep').replace(/\{key\}/g, keyText || 'L2')}</span>
             </label>
-            <p className="note">{holdKey ? t(keepOriginal ? 'shiftTab.keyOnKeep' : 'shiftTab.keyOnOnly').replace(/\{key\}/g, holdKey) : t('shiftTab.keyOff')}</p>
+            <p className="note">{holdKeys.length ? t(keepOriginal ? 'shiftTab.keyOnKeep' : 'shiftTab.keyOnOnly').replace(/\{key\}/g, keyText) : t('shiftTab.keyOff')}</p>
           </>
         )}
       </div>
@@ -593,7 +596,7 @@ function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
   const gear = fun.extend.reportRateGear(profile.funData)
   const hz = REPORT_RATE_OPTIONS.find((o) => o.gear === gear)?.hz
   const bits = fun.extend.stickResolutionBits(profile.funData)
-  const hold = holdKeyOf(profile)
+  const hold = holdKeysOf(profile).join(' / ') || null
   const dz = (i: number): string => `${(stick.deadzone(profile.sticks[i]).begin / 10).toFixed(1)}%`
   const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device' | 'shift'): JSX.Element => (
     <button key={key} type="button" className="overview-tile" onClick={() => onOpen(tab)}>
@@ -4801,10 +4804,10 @@ export default function App(): JSX.Element {
             <ShiftLayerPanel
               editingLayer={slot === SHIFT_PROFILE}
               normalSlot={normalSlot}
-              holdKey={holdKeyOf(profile)}
-              keepOriginal={(() => { const k = holdKeyOf(profile); return k ? holdKeepsOriginal(profile, k) : true })()}
+              holdKeys={holdKeysOf(profile)}
+              keepOriginal={(() => { const ks = holdKeysOf(profile); return ks.length ? ks.every((k) => holdKeepsOriginal(profile, k)) : true })()}
               disabled={busy || locked || calibrationRunning}
-              onHold={(key, keep) => edit(() => setHoldKey(profile, key, keep))}
+              onHold={(keys, keep) => edit(() => setHoldKeys(profile, keys, keep))}
               onEditLayer={() => { if (!dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(SHIFT_PROFILE) }}
               onBack={() => { if (!dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(normalSlot) }}
               onCopy={() => void copyIntoShift(normalSlot)}
