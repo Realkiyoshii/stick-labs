@@ -27,6 +27,7 @@ const entry =
         'tests/c2.ts',
         'tests/leadjoy.ts',
         'tests/sharecode.ts',
+        'tests/community.ts',
         'tests/curveidentity.ts',
         'tests/splinecurve.ts',
         'tests/splinemode.ts',

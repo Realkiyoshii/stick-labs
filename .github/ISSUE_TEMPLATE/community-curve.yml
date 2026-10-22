@@ -1,0 +1,45 @@
+name: Share a curve
+description: Post your stick curve to Stick Labs Community curves. It goes live automatically.
+title: "Curve: "
+labels: ["community-curve"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Your curve shows up in **Community curves** in the Stick Labs app and the web app about a minute after you submit.
+        A bot checks it first: a valid curve code, a clean name, and not a copy of a curve that's already posted.
+        Limits: 5 curves a day and 50 in total per person, and your GitHub account must be at least 7 days old.
+        Likes and reports are 👍 and 👎 reactions on this page. A curve with too many 👎 reactions is hidden automatically.
+  - type: input
+    id: name
+    attributes:
+      label: Curve name
+      description: 2–24 characters.
+      placeholder: My Apex curve
+    validations:
+      required: true
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Apex Legends
+        - Call of Duty
+        - Fortnite
+        - Rainbow Six Siege
+        - Overwatch 2
+        - Marvel Rivals
+        - The Finals
+        - Battlefield
+        - Valorant
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: code
+    attributes:
+      label: Curve code
+      description: In Stick Labs, open the Curves tab and press "Copy curve code", or use "Submit to community" to fill this in.
+      placeholder: SLC1.…
+    validations:
+      required: true

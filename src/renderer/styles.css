@@ -1457,3 +1457,16 @@ table.tbl tbody tr:hover {
 .share-code-input { flex: 1 1 220px; min-width: 0; font-size: 12px; }
 .share-profile { margin: 12px 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
 .share-profile h5 { margin: 0 0 6px; }
+
+/* Community curves */
+.community-curves { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.community-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.community-head h5 { margin: 0; }
+.community-filters { gap: 8px; margin: 8px 0; }
+.community-filters .input { flex: 1 1 140px; min-width: 0; }
+.community-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 8px 0; }
+.community-card { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.community-load { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; text-align: left; min-width: 0; }
+.community-load:hover .community-name { text-decoration: underline; }
+.community-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.community-meta { font-size: 11px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

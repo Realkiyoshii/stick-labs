@@ -7,6 +7,7 @@ import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/cu
 import { describeProfileChanges, type ReviewItem } from '@shared/review'
 import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
 import { applySharedProfile, decodeCurve, decodeProfile, encodeCurve, encodeProfile, rescaleCurve, ShareCodeError } from '@shared/sharecode'
+import { COMMUNITY_FEED_URL, COMMUNITY_GAMES, curvePageUrl, filterCurves, parseFeed, submitUrl, to255, type CommunityCurve, type CommunitySort } from '@shared/community'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
 import { identifyModel, identifyLeadJoyName, MODELS, type ControllerModel } from '@shared/models'
@@ -402,6 +403,97 @@ function ShareCodeRow({ copyLabel, onCopy, onImport, placeholder, disabled }: {
       })}>{t('share.import')}</button>
       {note && <span className={`pill ${note.ok ? 'good' : 'bad'}`} role="status">{note.text}</span>}
     </div>
+  )
+}
+
+// One download per session: the feed only changes when someone posts.
+let communityFeed: Promise<CommunityCurve[]> | null = null
+function loadCommunityFeed(force = false): Promise<CommunityCurve[]> {
+  if (!communityFeed || force) {
+    communityFeed = fetch(`${COMMUNITY_FEED_URL}?t=${Math.floor(Date.now() / 60_000)}`, { cache: 'no-store' })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status))
+        return res.json()
+      })
+      .then(parseFeed)
+    communityFeed.catch(() => { communityFeed = null })
+  }
+  return communityFeed
+}
+
+const COMMUNITY_PAGE = 24
+
+/** Browse, load and save curves other people posted; submit your own. */
+function CommunityCurves({ shareCode, onApply, onSave }: {
+  /** Share code of the curve currently in the editor, for Submit. */
+  shareCode: () => string
+  /** Points on the 0..255 scale. */
+  onApply: (pts: Array<{ x: number; y: number }>) => void
+  onSave: (name: string, pts: Array<{ x: number; y: number }>) => void
+}): JSX.Element {
+  const t = useT()
+  const [feed, setFeed] = useState<CommunityCurve[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [query, setQuery] = useState('')
+  const [game, setGame] = useState('')
+  const [sort, setSort] = useState<CommunitySort>('top')
+  const [shown, setShown] = useState(COMMUNITY_PAGE)
+  const [note, setNote] = useState<string | null>(null)
+  const load = (force = false): void => {
+    setFailed(false)
+    loadCommunityFeed(force).then(setFeed, () => setFailed(true))
+  }
+  useEffect(() => load(), [])
+  const list = feed ? filterCurves(feed, { query, game, sort }) : []
+  const open = (url: string): void => void api().openExternal(url).catch(() => undefined)
+  return (
+    <section className="community-curves">
+      <div className="community-head">
+        <h5>{t('community.title')}</h5>
+        <button className="btn sm" onClick={() => open(submitUrl(shareCode()))}>{t('community.submit')}</button>
+      </div>
+      <Hint>{t('community.hint')}</Hint>
+      <div className="row wrap community-filters">
+        <input className="input" value={query} placeholder={t('community.search')} onChange={(e) => { setQuery(e.target.value); setShown(COMMUNITY_PAGE) }} />
+        <select className="input" value={game} onChange={(e) => { setGame(e.target.value); setShown(COMMUNITY_PAGE) }}>
+          <option value="">{t('community.allGames')}</option>
+          {COMMUNITY_GAMES.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select className="input" value={sort} onChange={(e) => setSort(e.target.value as CommunitySort)}>
+          <option value="top">{t('community.sortTop')}</option>
+          <option value="new">{t('community.sortNew')}</option>
+        </select>
+        <button className="btn sm ghost" onClick={() => load(true)}>{t('community.refresh')}</button>
+      </div>
+      {note && <span className="pill good" role="status">{note}</span>}
+      {failed ? (
+        <p className="saved-curve-empty">{t('community.offline')}</p>
+      ) : !feed ? (
+        <p className="saved-curve-empty">{t('community.loading')}</p>
+      ) : list.length === 0 ? (
+        <p className="saved-curve-empty">{feed.length ? t('community.noMatch') : t('community.empty')}</p>
+      ) : (
+        <div className="community-grid">
+          {list.slice(0, shown).map((c) => {
+            const pts = to255(c)
+            return (
+              <div key={c.id} className="community-card">
+                <button className="community-load" title={t('community.load')} onClick={() => { onApply(pts); setNote(t('community.loaded').replace('{name}', c.name)) }}>
+                  <CurveMiniIcon points={pts} />
+                  <span className="community-name">{c.name}</span>
+                </button>
+                <span className="community-meta">@{c.author} · {c.game} · 👍 {c.likes}</span>
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="btn sm ghost" onClick={() => { onSave(c.name, pts); setNote(t('community.saved').replace('{name}', c.name)) }}>{t('community.save')}</button>
+                  <button className="btn sm ghost" title={t('community.rateTitle')} onClick={() => open(curvePageUrl(c.id))}>{t('community.rate')}</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {list.length > shown && <button className="btn sm ghost" onClick={() => setShown((n) => n + COMMUNITY_PAGE)}>{t('community.more').replace('{n}', String(list.length - shown))}</button>}
+    </section>
   )
 }
 
@@ -2899,6 +2991,14 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
           return t('share.curveImported').replace('{name}', name)
         }}
       />
+      <CommunityCurves
+        shareCode={() => encodeCurve({ scale: 1000, pts: designPoints })}
+        onApply={(pts) => stageCurve(toPts(ljSampleDesign(pts, zones)))}
+        onSave={(shared, pts) => {
+          const name = presets.some((p) => p.name === shared) ? nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName')) : shared
+          setPresets((prev) => [{ name, pts: toPts(ljSampleDesign(pts, zones)) }, ...prev].slice(0, 20))
+        }}
+      />
         </div>
       </section>
       </div>
@@ -4360,6 +4460,14 @@ export default function App(): JSX.Element {
                         const name = shared.name && !presets.some((p) => p.name === shared.name) ? shared.name : nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName'))
                         setPresets((prev) => [{ name, pts: pts.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
                         return t('share.curveImported').replace('{name}', name)
+                      }}
+                    />
+                    <CommunityCurves
+                      shareCode={() => encodeCurve({ scale: 255, pts: design })}
+                      onApply={(pts) => stageDesign(pts)}
+                      onSave={(shared, pts) => {
+                        const name = presets.some((p) => p.name === shared) ? nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName')) : shared
+                        setPresets((prev) => [{ name, pts: pts.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
                       }}
                     />
                       </div>
