@@ -1640,3 +1640,46 @@ table.tbl tbody tr:hover {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Motion, round 2. */
+/* Tab changes: only the page area cross-fades and rises; the sidebar and top bar stay put
+   (the sidebar's highlight still glides, since its new snapshot is live). */
+.sidebar { view-transition-name: sidebar; }
+.topbar { view-transition-name: topbar; }
+.content { view-transition-name: page; }
+::view-transition-old(root), ::view-transition-new(root),
+::view-transition-group(sidebar), ::view-transition-new(sidebar),
+::view-transition-group(topbar), ::view-transition-new(topbar) { animation: none; }
+::view-transition-old(sidebar), ::view-transition-old(topbar) { display: none; }
+::view-transition-group(page) { animation-duration: .26s; }
+::view-transition-old(page) { animation: vt-out .12s ease both; }
+::view-transition-new(page) { animation: vt-in .28s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Springy switches and selections. */
+.curve-spline-switch > span { transition: background-color .2s ease; }
+.curve-spline-switch > span::after { transition: transform .38s cubic-bezier(.34, 1.56, .64, 1), background-color .2s ease; }
+.choice-btn.active, .stick-card.active, .remap-filter button.active, .remap-source.selected { animation: pick-pop .34s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes pick-pop { from { transform: scale(.94); } to { transform: none; } }
+
+/* Connecting: the chosen controller button pulses until the pad answers. */
+.btn.connecting { border-color: var(--accent); color: var(--text); opacity: 1; animation: connect-pulse 1.2s ease-in-out infinite; }
+.connect-dot { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--accent); animation: connect-blink 1.2s ease-in-out infinite; }
+@keyframes connect-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+@keyframes connect-blink { 50% { opacity: .35; transform: scale(.75); } }
+
+/* Write bar: progress while writing, a drawn check once saved, then it slides away. */
+.write-bar { position: relative; }
+.write-bar.leaving { animation: write-bar-out .22s ease forwards; }
+@keyframes write-bar-out { to { transform: translateY(100%); opacity: 0; } }
+.write-bar.saved .write-bar-text { color: var(--good); font-weight: 600; }
+.write-bar-check { flex: 0 0 auto; color: var(--good); animation: pick-pop .4s cubic-bezier(.34, 1.56, .64, 1); }
+.write-bar-check path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: check-draw .32s .08s ease forwards; }
+@keyframes check-draw { to { stroke-dashoffset: 0; } }
+.write-bar-progress { position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat; background-size: 40% 100%; animation: progress-sweep 1.1s linear infinite; }
+@keyframes progress-sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}

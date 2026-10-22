@@ -27,7 +27,7 @@ import {
   linRepresentative, linLinearity, LIN_MIN_PASSES
 } from '@shared/sticklab'
 import { keyLabel, displayMapping, REMAP_TARGETS, SHIFT_KEY, SHIFT_PROFILE } from '@shared/keymap'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { LANGS, LangContext, tr, useLangState, useT } from './i18n'
 import { THEMES, ThemeContext, useThemeState } from './theme'
 import type { DeepPollResult } from '@shared/deeppoll'
@@ -39,8 +39,8 @@ const reduceMotion = (): boolean => !!window.matchMedia?.('(prefers-reduced-moti
 const easeOut = (k: number): number => 1 - Math.pow(1 - k, 3)
 
 /** Counts up from 0 on mount, then tweens to each new value. Display only. */
-function useTween(target: number, ms = 500): number {
-  const [shown, setShown] = useState(reduceMotion() ? target : 0)
+function useTween(target: number, ms = 500, fromZero = true): number {
+  const [shown, setShown] = useState(reduceMotion() || !fromZero ? target : 0)
   const cur = useRef(shown)
   useEffect(() => {
     const from = cur.current
@@ -57,6 +57,51 @@ function useTween(target: number, ms = 500): number {
     return () => cancelAnimationFrame(raf)
   }, [target, ms])
   return shown
+}
+
+/** Keeps a value on screen for `ms` after it turns null, flagged `leaving`, so it can animate out. */
+function usePresence<T>(value: T | null, ms = 220): { value: T; leaving: boolean } | null {
+  const [kept, setKept] = useState<{ value: T; leaving: boolean } | null>(value === null ? null : { value, leaving: false })
+  useEffect(() => {
+    if (value !== null) { setKept({ value, leaving: false }); return }
+    if (reduceMotion()) { setKept(null); return }
+    setKept((k) => (k ? { ...k, leaving: true } : null))
+    const id = window.setTimeout(() => setKept(null), ms)
+    return () => window.clearTimeout(id)
+  }, [value, ms])
+  return value !== null ? { value, leaving: false } : kept
+}
+
+/**
+ * FLIP: when a filter or sort reorders a list, items marked `data-flip` slide
+ * from their old spot to the new one and newcomers fade in.
+ */
+function useFlip(ref: React.RefObject<HTMLElement | null>, key: string): void {
+  const last = useRef(new Map<string, { x: number; y: number }>())
+  useLayoutEffect(() => {
+    const box = ref.current
+    if (!box) { last.current = new Map(); return }
+    const origin = box.getBoundingClientRect()
+    const items = Array.from(box.querySelectorAll<HTMLElement>('[data-flip]'))
+    const next = new Map<string, { x: number; y: number }>()
+    for (const el of items) {
+      const r = el.getBoundingClientRect()
+      next.set(el.dataset.flip ?? '', { x: r.left - origin.left, y: r.top - origin.top })
+    }
+    if (!reduceMotion() && last.current.size) {
+      for (const el of items) {
+        const id = el.dataset.flip ?? ''
+        const before = last.current.get(id)
+        const now = next.get(id)
+        if (!now) continue
+        if (!before) { el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' }); continue }
+        const dx = before.x - now.x
+        const dy = before.y - now.y
+        if (dx || dy) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.2, .8, .2, 1)' })
+      }
+    }
+    last.current = next
+  }, [key])
 }
 
 /**
@@ -112,15 +157,16 @@ function Hint({ children, style }: { children: React.ReactNode; style?: React.CS
   )
 }
 
-function CandidateButton({ candidate, onConnect, displayName }: { candidate: Candidate; onConnect: (path: string) => void; displayName?: string }): JSX.Element {
+function CandidateButton({ candidate, onConnect, displayName, connecting = false }: { candidate: Candidate; onConnect: (path: string) => void; displayName?: string; connecting?: boolean }): JSX.Element {
+  const t = useT()
   const known = identifyModel(candidate.product, candidate.productId)
   const genericProduct = !candidate.product || /^(gamepad|xbox 360 controller for windows)$/i.test(candidate.product.trim())
   const fallbackName = genericProduct
     ? `Controller · 0x${candidate.productId.toString(16).padStart(4, '0')}`
     : candidate.product
   return (
-    <button className="btn sm" onClick={() => onConnect(candidate.path)}>
-      {displayName ?? (known ? known.marketingName : fallbackName)}{candidate.preferred ? ' ★' : ''}
+    <button className={`btn sm${connecting ? ' connecting' : ''}`} aria-busy={connecting} disabled={connecting} onClick={() => onConnect(candidate.path)}>
+      {connecting ? <><span className="connect-dot" aria-hidden="true" />{t('conn.connecting')}</> : <>{displayName ?? (known ? known.marketingName : fallbackName)}{candidate.preferred ? ' ★' : ''}</>}
     </button>
   )
 }
@@ -501,6 +547,8 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
   }
   useEffect(() => load(), [])
   const list = feed ? filterCurves(feed, { query, game, sort }) : []
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  useFlip(gridRef, list.slice(0, shown).map((c) => c.id).join())
   const open = (url: string): void => void api().openExternal(url).catch(() => undefined)
   return (
     <section className="community-curves">
@@ -529,11 +577,11 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
       ) : list.length === 0 ? (
         <p className="saved-curve-empty">{feed.length ? t('community.noMatch') : t('community.empty')}</p>
       ) : (
-        <div className="community-grid">
+        <div className="community-grid" ref={gridRef}>
           {list.slice(0, shown).map((c) => {
             const pts = to255(c)
             return (
-              <div key={c.id} className="community-card">
+              <div key={c.id} className="community-card" data-flip={c.id}>
                 <button className="community-load" title={t('community.load')} onClick={() => { onApply(pts); setNote(t('community.loaded').replace('{name}', c.name)) }}>
                   <CurveMiniIcon points={pts} />
                   <span className="community-name">{c.name}</span>
@@ -2658,11 +2706,14 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
   }, [capture, selected?.id, disabled, captureFamily])
 
   const mappedCount = rows.filter(row => row.current !== 0).length
+  const mappedShown = useTween(mappedCount, 300, false)
   const shown = onlyMapped ? visible.filter(row => row.current !== 0) : visible
+  const listRef = useRef<HTMLDivElement | null>(null)
+  useFlip(listRef, shown.map(row => row.id).join())
   return <section className="card remap-workspace">
     <header className="remap-header">
       <div><span className="stick-eyebrow">{t('nav.buttons')}</span><h3>{t('buttons.title')}</h3><p>{t('remap.intro')}</p></div>
-      <div className="remap-header-side"><span className={`pill${mappedCount ? ' good' : ''}`}>{t('remap.count').replace('{n}', String(mappedCount))}</span><details className="remap-help"><summary aria-label={t('buttons.help')}>?</summary><div>{help}</div></details></div>
+      <div className="remap-header-side"><span className={`pill${mappedCount ? ' good' : ''}`}>{t('remap.count').replace('{n}', String(Math.round(mappedShown)))}</span><details className="remap-help"><summary aria-label={t('buttons.help')}>?</summary><div>{help}</div></details></div>
     </header>
     <div className="remap-layout">
       <section className="remap-sources">
@@ -2670,10 +2721,10 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
           <label className="remap-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><input type="search" placeholder={t('remap.searchButtons')} aria-label={t('remap.searchButtons')} value={query} onChange={e => setQuery(e.target.value)} /></label>
           <div className="remap-filter" role="group">{([false, true] as const).map(f => <button type="button" key={String(f)} className={onlyMapped === f ? 'active' : ''} aria-pressed={onlyMapped === f} onClick={() => setOnlyMapped(f)}>{t(f ? 'remap.filterMapped' : 'remap.filterAll')}</button>)}</div>
         </div>
-        <div className="remap-source-scroll">{[false, true].map(extra => {
+        <div className="remap-source-scroll" ref={listRef}>{[false, true].map(extra => {
           const group = shown.filter(row => row.extra === extra)
           if (!group.length) return null
-          return <div className="remap-source-group" key={String(extra)}><div className="remap-group-label"><span>{t(extra ? 'remap.extra' : 'remap.standard')}</span><span>{group.length}</span></div><div className="remap-source-grid">{group.map(row => <button type="button" className={`remap-source${selected?.id === row.id ? ' selected' : ''}${row.current ? ' mapped' : ''}`} key={row.id} aria-pressed={selected?.id === row.id} onClick={() => { setCapture(null); setSelectedId(row.id); setOpen(false) }}>
+          return <div className="remap-source-group" key={String(extra)}><div className="remap-group-label"><span>{t(extra ? 'remap.extra' : 'remap.standard')}</span><span>{group.length}</span></div><div className="remap-source-grid">{group.map(row => <button type="button" className={`remap-source${selected?.id === row.id ? ' selected' : ''}${row.current ? ' mapped' : ''}`} key={row.id} data-flip={row.id} aria-pressed={selected?.id === row.id} onClick={() => { setCapture(null); setSelectedId(row.id); setOpen(false) }}>
             <span className="remap-source-icon">{row.icon}</span>
             <span className="remap-source-name"><strong>{row.name}</strong>{row.current !== 0
               ? <span className="remap-source-out" title={row.effective}><span aria-hidden="true">→</span><span className="remap-source-out-icon">{row.outputIcon}</span><b>{row.effective}</b></span>
@@ -3378,12 +3429,17 @@ export default function App(): JSX.Element {
   const [freshUndo, setFreshUndo] = useState<{ path: string | null; slot: number; model: string; bytes: Uint8Array; dirty: boolean; designs: Array<string | null>; modes: Record<string, boolean> } | null>(null)
   const [calibrationRunning, setCalibrationRunning] = useState(false)
   const frameRef = useRef<HTMLDivElement | null>(null)
+  const [connectingPath, setConnectingPath] = useState<string | null>(null)
+  const [savedFlash, setSavedFlash] = useState<string | null>(null)
+  const [writing, setWriting] = useState(false)
   const navRef = useRef<HTMLElement | null>(null)
   const [navMark, setNavMark] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [tab, changeTab] = useState<'overview' | 'sticks' | 'curves' | 'device' | 'buttons' | 'shift' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('overview')
   const setTab = (next: typeof tab): void => {
     if (calibrationRunning && next !== 'calibrate') { setErr(t('cal.web.leave')); return }
-    changeTab(next)
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
+    if (doc.startViewTransition && next !== tab && !reduceMotion()) doc.startViewTransition(() => flushSync(() => changeTab(next)))
+    else changeTab(next)
   }
   const [measuring, setMeasuring] = useState<{ left: number; suggestion: { dev: number; pct10: number } | null } | null>(null)
   const wanderRef = useRef(0)
@@ -3608,6 +3664,11 @@ export default function App(): JSX.Element {
   }
 
   async function connect(path: string): Promise<void> {
+    setConnectingPath(path)
+    try { await openPad(path) } finally { setConnectingPath(null) }
+  }
+
+  async function openPad(path: string): Promise<void> {
     setErr(null)
     try {
       const cand = candidates.find((c) => c.path === path)
@@ -4169,14 +4230,25 @@ export default function App(): JSX.Element {
     return true
   }
 
-  // Each tab change replays the page's fade-in (restarted on the same node, so no panel remounts).
+  // A newly connected controller's page fades in (restarted on the same node, so no panel remounts).
   useEffect(() => {
     const el = frameRef.current
-    if (!el || reduceMotion()) return
+    if (!el || !connected || reduceMotion()) return
     el.classList.remove('page-enter')
     void el.offsetWidth
     el.classList.add('page-enter')
-  }, [tab])
+  }, [connected])
+  // "Saved to P1" shows in the Write bar for a moment after each write.
+  useEffect(() => {
+    if (!savedAt) return
+    setSavedFlash(isLj ? (['Main', 'Sub1', 'Sub2'] as const)[savedAt.slot - 1] ?? '' : savedAt.slot === SHIFT_PROFILE ? 'Shift' : `P${savedAt.slot}`)
+    const id = window.setTimeout(() => setSavedFlash(null), 1800)
+    return () => window.clearTimeout(id)
+  }, [savedAt])
+  const staged = connected && (isLj ? ljDirty : dirty)
+  const liveCount = staged && !isLj ? changeCount() : null
+  const rolledCount = useTween(liveCount ?? 0, 300, false)
+  const bar = usePresence<'staged' | 'writing' | 'saved'>(staged ? (writing ? 'writing' : 'staged') : savedFlash ? 'saved' : null)
   // The sidebar highlight glides to the active item.
   useLayoutEffect(() => {
     const nav = navRef.current
@@ -4275,12 +4347,12 @@ export default function App(): JSX.Element {
             {t('side.copy')}
           </button>
           </div>
-          {!connected && primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} />)}
+          {!connected && primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} connecting={connectingPath === c.path} />)}
           {!connected && otherCandidates.length > 0 && (
             <details className="candidate-more">
               <summary>{t('side.otherControllers')} <span className="pill">{otherCandidates.length}</span></summary>
               <div className="stack">
-                {otherCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} />)}
+                {otherCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} connecting={connectingPath === c.path} />)}
               </div>
             </details>
           )}
@@ -4407,7 +4479,7 @@ export default function App(): JSX.Element {
                 {t('shift.copy').replace('{slot}', `P${info?.currentProfile && info.currentProfile <= 4 ? info.currentProfile : 1}`)}
               </button>
             </>}
-            {review && <WriteReview slot={slot} items={review} busy={busy} onCancel={() => setReview(null)} onWrite={() => { setReview(null); void write() }} />}
+            {review && <WriteReview slot={slot} items={review} busy={busy} onCancel={() => setReview(null)} onWrite={() => { setReview(null); setWriting(true); void write().finally(() => setWriting(false)) }} />}
             {!(isLj ? ljDirty : dirty) && savedAt && savedAt.slot === (isLj ? ljSlot + 1 : slot) && (
               <span className="pill good" title={t('msg.verifiedTitle')}>
                 {t('msg.saved')} {new Date(savedAt.at).toLocaleTimeString()}
@@ -5030,19 +5102,23 @@ export default function App(): JSX.Element {
           )}
           </div>
         </div>
-        {connected && (isLj ? ljDirty : dirty) && (() => {
-          const n = isLj ? null : changeCount()
-          const where = isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
-          return <div className="write-bar" role="status">
-            <span className="write-bar-dot" aria-hidden="true" />
-            <span className="write-bar-text">{(n === null ? t('bar.unsaved') : t(n === 1 ? 'bar.change' : 'bar.changes').replace('{n}', String(n))).replace('{slot}', where)}</span>
-            <button
+        {bar && (() => {
+          const mode = bar.value
+          const where = mode === 'saved' ? savedFlash ?? '' : isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
+          const text = mode === 'saved' ? t('bar.saved') : mode === 'writing' ? t('bar.writing') : liveCount === null ? t('bar.unsaved') : t(liveCount === 1 ? 'bar.change' : 'bar.changes').replace('{n}', String(Math.max(1, Math.round(rolledCount))))
+          return <div className={`write-bar ${mode}${bar.leaving ? ' leaving' : ''}`} role="status">
+            {mode === 'writing' && <span className="write-bar-progress" aria-hidden="true" />}
+            {mode === 'saved'
+              ? <svg className="write-bar-check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7" /></svg>
+              : <span className="write-bar-dot" aria-hidden="true" />}
+            <span className="write-bar-text">{text.replace('{slot}', where)}</span>
+            {mode !== 'saved' && <button
               className="btn primary"
-              disabled={isLj ? ljBusy : busy || locked || calibrationRunning}
-              onClick={() => { if (isLj) void writeLeadJoyDraft(); else openReview() }}
+              disabled={mode === 'writing' || (isLj ? ljBusy : busy || locked || calibrationRunning)}
+              onClick={() => { if (isLj) { setWriting(true); void writeLeadJoyDraft().finally(() => setWriting(false)) } else openReview() }}
             >
-              {(isLj ? ljBusy : busy) ? t('common.working') : isLj ? t('top.write') : t('bar.review')}
-            </button>
+              {mode === 'writing' ? t('common.working') : isLj ? t('top.write') : t('bar.review')}
+            </button>}
           </div>
         })()}
       </main>
