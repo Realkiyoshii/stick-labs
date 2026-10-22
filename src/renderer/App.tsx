@@ -3699,6 +3699,12 @@ export default function App(): JSX.Element {
     }
   }
 
+  /** Count of staged changes for the bottom Write bar (null = not countable). */
+  function changeCount(): number | null {
+    if (!blob || !padBytes || padBytes.length !== blob.length) return null
+    try { return describeProfileChanges(padBytes, blob, modelId).length || null } catch { return null }
+  }
+
   async function write(): Promise<boolean> {
     if (!blob) return false
     setBusy(true)
@@ -4283,14 +4289,6 @@ export default function App(): JSX.Element {
                 {t('shift.copy').replace('{slot}', `P${info?.currentProfile && info.currentProfile <= 4 ? info.currentProfile : 1}`)}
               </button>
             </>}
-            {connected && <button
-              className="btn sm primary"
-              disabled={isLj ? ljBusy || !ljDirty : !connected || !dirty || busy || locked || calibrationRunning}
-              onClick={() => { if (isLj) void writeLeadJoyDraft(); else openReview() }}
-            >
-              {(isLj ? ljBusy : busy) ? t('common.working') : t('top.write')}
-            </button>}
-            {(isLj ? ljDirty : dirty) && <span className="pill warn">{t('msg.unsaved')}</span>}
             {review && <WriteReview slot={slot} items={review} busy={busy} onCancel={() => setReview(null)} onWrite={() => { setReview(null); void write() }} />}
             {!(isLj ? ljDirty : dirty) && savedAt && savedAt.slot === (isLj ? ljSlot + 1 : slot) && (
               <span className="pill good" title={t('msg.verifiedTitle')}>
@@ -4303,7 +4301,6 @@ export default function App(): JSX.Element {
           <div className="content-frame">
           {err && <div className="note bad">{err}</div>}
           {msg && <div className="note">{msg}</div>}
-          {(isLj ? ljDirty : dirty) && <div className="note warn dirty-toast" role="status">{t('msg.dirty')}</div>}
           {!connected && (
             <div className="msg"><h3>{t('msg.connect')}</h3><p>{t('msg.models')} {t('msg.connectBody')}</p></div>
           )}
@@ -4927,6 +4924,21 @@ export default function App(): JSX.Element {
           )}
           </div>
         </div>
+        {connected && (isLj ? ljDirty : dirty) && (() => {
+          const n = isLj ? null : changeCount()
+          const where = isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
+          return <div className="write-bar" role="status">
+            <span className="write-bar-dot" aria-hidden="true" />
+            <span className="write-bar-text">{(n === null ? t('bar.unsaved') : t(n === 1 ? 'bar.change' : 'bar.changes').replace('{n}', String(n))).replace('{slot}', where)}</span>
+            <button
+              className="btn primary"
+              disabled={isLj ? ljBusy : busy || locked || calibrationRunning}
+              onClick={() => { if (isLj) void writeLeadJoyDraft(); else openReview() }}
+            >
+              {(isLj ? ljBusy : busy) ? t('common.working') : isLj ? t('top.write') : t('bar.review')}
+            </button>
+          </div>
+        })()}
       </main>
     </div>
     </ThemeContext.Provider>
