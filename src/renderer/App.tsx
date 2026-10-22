@@ -1,6 +1,6 @@
 import { buildCleanProfile } from '@shared/clean-profile'
 import { capturedKeyTarget, capturedPadTarget, PadCaptureGate, type CaptureFamily } from '@shared/button-capture'
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { TriggerSettings } from './TriggerSettings'
 import { api, b64ToBytes, bytesToB64, type Candidate, type DeviceInfo, type DeviceStats, type LiveSample, type PingResult } from './api'
 import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/curveAdjust'
@@ -33,6 +33,59 @@ import { THEMES, ThemeContext, useThemeState } from './theme'
 import type { DeepPollResult } from '@shared/deeppoll'
 import { LJ_HID_KEYS, LJ_MOUSE_BUTTONS, LJ_MAP_GAMEPAD, LJ_MAP_KEYBOARD, LJ_MAP_MOUSE, LJ_SHAPES, LJ_PHYSICAL, ljCurveZones, ljFitZones, ljLinearCurve, ljPercentToWire, ljSampleDesign, ljTargetLabel, type LjButtonTarget, type LjSnapshot, type LjStickZones, type LjTriggerZones } from '@shared/leadjoy'
 
+
+/** The OS "reduce motion" setting: every animation below is skipped when it is on. */
+const reduceMotion = (): boolean => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const easeOut = (k: number): number => 1 - Math.pow(1 - k, 3)
+
+/** Counts up from 0 on mount, then tweens to each new value. Display only. */
+function useTween(target: number, ms = 500): number {
+  const [shown, setShown] = useState(reduceMotion() ? target : 0)
+  const cur = useRef(shown)
+  useEffect(() => {
+    const from = cur.current
+    if (reduceMotion() || from === target) { cur.current = target; setShown(target); return }
+    const start = performance.now()
+    let raf = 0
+    const step = (now: number): void => {
+      const k = Math.min(1, (now - start) / ms)
+      cur.current = from + (target - from) * easeOut(k)
+      setShown(cur.current)
+      if (k < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target, ms])
+  return shown
+}
+
+/**
+ * Morphs a drawn line into a new shape with the same number of points, e.g.
+ * picking a preset. Dragging or typing one point (`hold`, or one point
+ * changed) snaps, so editing never lags behind the pointer.
+ */
+function useMorph<T extends { x: number; y: number }>(target: T[] | undefined, hold: boolean, ms = 220): T[] | undefined {
+  const [shown, setShown] = useState(target)
+  const cur = useRef(target)
+  useEffect(() => {
+    const from = cur.current
+    const changed = from && target && from.length === target.length ? target.filter((p, i) => p.x !== from[i].x || p.y !== from[i].y).length : 0
+    if (!from || !target || hold || changed < 2 || reduceMotion()) { cur.current = target; setShown(target); return }
+    const start = performance.now()
+    let raf = 0
+    const step = (now: number): void => {
+      const k = easeOut(Math.min(1, (now - start) / ms))
+      const next = target.map((p, i) => ({ ...p, x: from[i].x + (p.x - from[i].x) * k, y: from[i].y + (p.y - from[i].y) * k }))
+      cur.current = next
+      setShown(next)
+      if (k < 1) raf = requestAnimationFrame(step)
+      else { cur.current = target; setShown(target) }
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target, hold, ms])
+  return shown
+}
 
 /**
  * Collapsible help text — every descriptive hint/note in the UI hides behind
@@ -155,6 +208,8 @@ function WriteReview({ slot, items, busy, onCancel, onWrite }: { slot: number; i
 function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_INFINITY, overlay, max = 255, height = 240, spline = false, preview, liveDot }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; onAddPoint?: (point: { x: number; y: number }) => void; maxPoints?: number; overlay?: Array<{ x: number; y: number }>; max?: number; height?: number; spline?: boolean; /** Linear/Smooth/Delay: draw this line instead of the points. */ preview?: Array<{ x: number; y: number }>; /** Live stick position on the curve, plot units. */ liveDot?: { x: number; y: number } | null }): JSX.Element {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const drag = useRef<number | null>(null)
+  const shownPoints = useMorph(points, drag.current !== null) ?? points
+  const shownPreview = useMorph(preview, drag.current !== null)
 
   function toPx(w: number, h: number): { toX: (v: number) => number; toY: (v: number) => number } {
     const pad = 10
@@ -247,9 +302,9 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
     ctx.fillText(`X max ${max}`, toX(max) - 52, pad + 11)
     ctx.fillText(`Y max ${max}`, pad + 4, toY(max) + 13)
     // Endpoint projections: actual max X / max Y reached by the design.
-    if (points.length > 0) {
-      const maxX = Math.max(...points.map((p) => p.x))
-      const maxY = Math.max(...points.map((p) => p.y))
+    if (shownPoints.length > 0) {
+      const maxX = Math.round(Math.max(...shownPoints.map((p) => p.x)))
+      const maxY = Math.round(Math.max(...shownPoints.map((p) => p.y)))
       ctx.strokeStyle = 'rgba(245,181,68,0.8)'
       ctx.setLineDash([5, 4])
       ctx.beginPath()
@@ -269,13 +324,13 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
     ctx.lineWidth = 2
     ctx.beginPath()
     // Draw the selected interpolation; control handles remain on the original points.
-    const line = preview ?? (spline ? traceSpline(points.map(p => ({ x: p.x * 255 / max, y: p.y * 255 / max })), 255).map(p => ({ x: p.x * max / 255, y: p.y * max / 255 })) : points)
+    const line = shownPreview ?? (spline ? traceSpline(shownPoints.map(p => ({ x: p.x * 255 / max, y: p.y * 255 / max })), 255).map(p => ({ x: p.x * max / 255, y: p.y * max / 255 })) : shownPoints)
     line.forEach((p, i) => {
       if (i === 0) ctx.moveTo(toX(p.x), toY(p.y))
       else ctx.lineTo(toX(p.x), toY(p.y))
     })
     ctx.stroke()
-    if (overlay && !preview) {
+    if (overlay && !shownPreview) {
       ctx.strokeStyle = 'rgba(245,181,68,0.85)'
       ctx.setLineDash([5, 4])
       ctx.beginPath()
@@ -292,7 +347,7 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
       })
       ctx.lineWidth = 2
     }
-    ;(preview ? [preview[0], preview[preview.length - 1]] : points).forEach((p) => {
+    ;(shownPreview ? [shownPreview[0], shownPreview[shownPreview.length - 1]] : shownPoints).forEach((p) => {
       ctx.fillStyle = drag.current !== null ? '#f5b544' : '#ff8fa0'
       ctx.beginPath()
       ctx.arc(toX(p.x), toY(p.y), 5, 0, Math.PI * 2)
@@ -318,7 +373,7 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
       ctx.stroke()
       ctx.lineWidth = 2
     }
-  }, [points, overlay, max, height, spline, preview, liveDot])
+  }, [shownPoints, overlay, max, height, spline, shownPreview, liveDot])
   return (
     <canvas
       ref={ref}
@@ -592,7 +647,10 @@ function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
   const hz = REPORT_RATE_OPTIONS.find((o) => o.gear === gear)?.hz
   const bits = fun.extend.stickResolutionBits(profile.funData)
   const hold = holdKeysOf(profile).join(' / ') || null
-  const dz = (i: number): string => `${(stick.deadzone(profile.sticks[i]).begin / 10).toFixed(1)}%`
+  const hzShown = useTween(hz ?? 0)
+  const bitsShown = useTween(bits)
+  const dzL = useTween(stick.deadzone(profile.sticks[0]).begin / 10)
+  const dzR = useTween(stick.deadzone(profile.sticks[1]).begin / 10)
   const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device' | 'shift'): JSX.Element => (
     <button key={key} type="button" className="overview-tile" onClick={() => onOpen(tab)}>
       <span className="overview-tile-icon"><NavIcon kind={icon} size={20} /></span>
@@ -604,11 +662,11 @@ function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
     <div className="overview">
       <div className="tuning-page-heading"><h2>{modelName}</h2><p>{t('overview.sub').replace('{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{fw}', firmware ?? '—')}</p></div>
       <div className="overview-grid">
-        {tile('poll', 'polling', t('overview.polling'), hz ? (hz >= 1000 ? `${hz / 1000}K Hz` : `${hz} Hz`) : `gear ${gear}`, 'device')}
-        {tile('bits', 'bits', t('overview.bits'), `${bits}-bit`, 'device')}
+        {tile('poll', 'polling', t('overview.polling'), hz ? (hz >= 1000 ? `${Math.round(hzShown / 100) / 10}K Hz` : `${Math.round(hzShown)} Hz`) : `gear ${gear}`, 'device')}
+        {tile('bits', 'bits', t('overview.bits'), `${Math.round(bitsShown)}-bit`, 'device')}
         {tile('lc', 'curves', t('overview.leftCurve'), <CurveMiniIcon points={stick.curve(profile.sticks[0])} />, 'curves')}
         {tile('rc', 'curves', t('overview.rightCurve'), <CurveMiniIcon points={stick.curve(profile.sticks[1])} />, 'curves')}
-        {tile('dz', 'deadzone', t('overview.deadzones'), `L ${dz(0)} · R ${dz(1)}`, 'sticks')}
+        {tile('dz', 'deadzone', t('overview.deadzones'), `L ${dzL.toFixed(1)}% · R ${dzR.toFixed(1)}%`, 'sticks')}
         {tile('shift', 'shift', t('overview.shift'), hold ?? t('hold.off'), 'shift')}
       </div>
     </div>
@@ -3319,6 +3377,9 @@ export default function App(): JSX.Element {
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
   const [freshUndo, setFreshUndo] = useState<{ path: string | null; slot: number; model: string; bytes: Uint8Array; dirty: boolean; designs: Array<string | null>; modes: Record<string, boolean> } | null>(null)
   const [calibrationRunning, setCalibrationRunning] = useState(false)
+  const frameRef = useRef<HTMLDivElement | null>(null)
+  const navRef = useRef<HTMLElement | null>(null)
+  const [navMark, setNavMark] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [tab, changeTab] = useState<'overview' | 'sticks' | 'curves' | 'device' | 'buttons' | 'shift' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('overview')
   const setTab = (next: typeof tab): void => {
     if (calibrationRunning && next !== 'calibrate') { setErr(t('cal.web.leave')); return }
@@ -4108,6 +4169,29 @@ export default function App(): JSX.Element {
     return true
   }
 
+  // Each tab change replays the page's fade-in (restarted on the same node, so no panel remounts).
+  useEffect(() => {
+    const el = frameRef.current
+    if (!el || reduceMotion()) return
+    el.classList.remove('page-enter')
+    void el.offsetWidth
+    el.classList.add('page-enter')
+  }, [tab])
+  // The sidebar highlight glides to the active item.
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const place = (): void => {
+      const active = nav.querySelector<HTMLElement>('.nav-item.active')
+      setNavMark(active && active.offsetHeight ? { top: active.offsetTop, left: active.offsetLeft, width: active.offsetWidth, height: active.offsetHeight } : null)
+    }
+    place()
+    const ro = new ResizeObserver(place)
+    ro.observe(nav)
+    nav.querySelectorAll('.nav-group, .nav-more').forEach((el) => ro.observe(el))
+    return () => ro.disconnect()
+  }, [tab, isLj, lang])
+
   return (
     <LangContext.Provider value={{ lang, setLang }}>
     <ThemeContext.Provider value={{ theme, setTheme }}>
@@ -4123,7 +4207,8 @@ export default function App(): JSX.Element {
             <h1>Stick <span>Labs</span></h1>
           </div>
         </div>
-        <nav className="nav">
+        <nav className="nav" ref={navRef}>
+          {navMark && <span className="nav-mark" aria-hidden="true" style={{ transform: `translateY(${navMark.top}px)`, left: navMark.left, width: navMark.width, height: navMark.height }} />}
           {(() => {
             const item = (id: typeof tab, icon: NavIconKind, label: string): JSX.Element => (
               <button key={id} type="button" className={`nav-item${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
@@ -4331,7 +4416,7 @@ export default function App(): JSX.Element {
           </div>
         </header>
         <div className="content">
-          <div className="content-frame">
+          <div className="content-frame" ref={frameRef}>
           {err && <div className="note bad">{err}</div>}
           {msg && <div className="note">{msg}</div>}
           {!connected && (

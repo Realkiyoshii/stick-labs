@@ -1605,3 +1605,38 @@ table.tbl tbody tr:hover {
 .remap-listening-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
 @media (max-width: 1000px) { .remap-layout { grid-template-columns: 1fr; } .remap-binding { position: static; border-left: 0; border-top: 1px solid var(--line); } }
 @media (max-width: 600px) { .remap-toolbar { flex-direction: column; align-items: stretch; } .remap-source-grid { grid-template-columns: 1fr; } }
+
+/* Motion: page fade, gliding sidebar highlight, soft hover/press, popups.
+   Live stick readouts are never animated, and "reduce motion" turns all of this off. */
+.page-enter { animation: page-in .24s cubic-bezier(.2, .8, .2, 1); }
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.nav { position: relative; }
+.nav-mark { position: absolute; top: 0; z-index: 0; border-radius: var(--radius-sm); background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent) 5%, transparent)); box-shadow: inset 2px 0 0 var(--accent); pointer-events: none; transition: transform .3s cubic-bezier(.2, .8, .2, 1), height .3s cubic-bezier(.2, .8, .2, 1); }
+.nav-item { position: relative; z-index: 1; }
+.nav-item.active { background: transparent; box-shadow: none; }
+.nav-item .nav-icon { transition: color .2s ease, opacity .2s ease; }
+
+.btn, .choice-btn, .stick-card, .remap-source, .overview-tile, .remap-capture-choice, .remap-filter button, .nav-item {
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease, transform .14s ease;
+}
+.btn:active:not(:disabled), .choice-btn:active:not(:disabled), .remap-filter button:active, .remap-capture-choice:active:not(:disabled) { transform: scale(.97); }
+.stick-card:hover, .remap-source:hover, .overview-tile:hover { transform: translateY(-2px); }
+.stick-card:active, .remap-source:active, .overview-tile:active { transform: translateY(0) scale(.99); }
+
+.overview-tile { animation: tile-in .4s cubic-bezier(.2, .8, .2, 1) both; }
+.overview-tile:nth-child(2) { animation-delay: .04s; }
+.overview-tile:nth-child(3) { animation-delay: .08s; }
+.overview-tile:nth-child(4) { animation-delay: .12s; }
+.overview-tile:nth-child(5) { animation-delay: .16s; }
+.overview-tile:nth-child(6) { animation-delay: .2s; }
+@keyframes tile-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+
+.review-backdrop { animation: fade-in .16s ease; }
+.review-dialog, body > div[data-keyselect], .remap-help > div { animation: pop-in .18s cubic-bezier(.2, .8, .2, 1); }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.97); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
