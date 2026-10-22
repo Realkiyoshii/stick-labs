@@ -1,6 +1,7 @@
 """Stick Labs icon: dark rounded tile, light stick ring with a gap, green S breaking out of it."""
 import base64
 import io
+import struct
 
 from PIL import Image, ImageDraw
 
@@ -38,13 +39,38 @@ def render(size, bold=False):
     return img.resize((size, size), Image.LANCZOS)
 
 
+def write_ico(path, frames):
+    """ICO with classic 32-bit bitmap entries below 256 px and PNG only at 256:
+    Explorer's desktop and Start icons stay blank when small entries are PNG."""
+    blobs = []
+    for im in frames:
+        w, h = im.size
+        if w >= 256:
+            buf = io.BytesIO()
+            im.save(buf, format="PNG")
+            blobs.append(buf.getvalue())
+            continue
+        px = im.convert("RGBA").tobytes("raw", "BGRA", 0, -1)  # bottom-up rows
+        mask_row = ((w + 31) // 32) * 4
+        header = struct.pack("<IiiHHIIiiII", 40, w, h * 2, 1, 32, 0, len(px) + mask_row * h, 0, 0, 0, 0)
+        blobs.append(header + px + bytes(mask_row * h))
+    out = struct.pack("<HHH", 0, 1, len(frames))
+    offset = 6 + 16 * len(frames)
+    for im, blob in zip(frames, blobs):
+        w, h = im.size
+        out += struct.pack("<BBBBHHII", w % 256, h % 256, 0, 0, 1, 32, len(blob), offset)
+        offset += len(blob)
+    with open(path, "wb") as f:
+        f.write(out + b"".join(blobs))
+
+
 big = render(256)
 big.save("build/icon.png")
 big.save("src/web/icon.png")
 sizes = [16, 24, 32, 48, 64, 128, 256]
 frames = [render(s, bold=s <= 32) for s in sizes]
 for path in ("build/icon.ico", "src/web/icon.ico"):
-    frames[-1].save(path, format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
+    write_ico(path, frames)
 
 buf = io.BytesIO()
 big.save(buf, format="PNG", optimize=True)
