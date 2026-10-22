@@ -4652,7 +4652,7 @@ export default function App(): JSX.Element {
             <RemapWorkspace
               captureFamily="gamesir"
               disabled={busy || locked}
-              help={<>{t('buttons.hint')}<br /><br />{t('shift.buttonsHint')}<br /><br />{t('buttons.backs')}{modelId === 'G7ProCE' && (<><br /><br />{t('buttons.backsExtra')}</>)}{modelId === 'T3CE' && (<><br /><br />{t('buttons.frontExtra')}<br /><br />{t('buttons.tExtra')}</>)}</>}
+              help={<>{t('buttons.hint')}<br /><br />{t('shift.buttonsHint')} {t('shift.triggersHint')}<br /><br />{t('buttons.backs')}{modelId === 'G7ProCE' && (<><br /><br />{t('buttons.backsExtra')}</>)}{modelId === 'T3CE' && (<><br /><br />{t('buttons.frontExtra')}<br /><br />{t('buttons.tExtra')}</>)}</>}
               rows={([
                 ...STANDARD_BUTTONS.map((name, i) => ({ name: keyLabel(i + 1), value: i + 1, pkt: profile.buttons[i] ?? null as Packet | null })),
                     ...(profile.functionKeys[0] && profile.functionKeys[0].length === 169
@@ -4702,7 +4702,16 @@ export default function App(): JSX.Element {
                 const values = button.mapValues(pkt)
                 const current = values.find(v => v !== 0) ?? 0
                 return [{ id: row.name, name: row.name, icon: <KeyIcon value={row.value} tag={row.tag} size={27} />, current, effective: displayMapping(values), outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: index >= STANDARD_BUTTONS.length, known: true, onPick: (v: number) => edit(() => button.setMap(pkt, [v, 0, 0])) }]
-              })}
+              }).concat(
+                // L2/R2 carry their own mapping at trigger +11/+12 — where
+                // GameSir Connect stores "R2 → Shift" (proven on T3CE P1).
+                profile.triggers.slice(0, 2).map((tp, i) => {
+                  const values = trigger.mapValues(tp)
+                  const current = trigger.mapped(tp) ? values.find(v => v !== 0) ?? 0 : 0
+                  const name = i ? 'R2' : 'L2'
+                  return { id: name, name, icon: <KeyIcon value={19 + i} size={27} />, current, effective: current ? displayMapping(values) : '—', outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: false, known: true, onPick: (v: number) => edit(() => trigger.setMap(tp, [v, 0, 0])) }
+                })
+              )}
             />
             </div>
             </>
