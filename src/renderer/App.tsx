@@ -2533,6 +2533,7 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
   const [openSlot, setOpenSlot] = useState<1 | 2 | null>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [onlyMapped, setOnlyMapped] = useState(false)
   const selected = rows.find(row => row.id === selectedId) ?? rows[0]
   const visible = rows.filter(row => `${row.name} ${row.effective}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
   const [capture, setCapture] = useState<'keyboard' | 'controller' | null>(null)
@@ -2598,21 +2599,39 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
     return () => { finished = true; cancelAnimationFrame(frame); window.removeEventListener('keydown', down, true); window.removeEventListener('keyup', up, true); window.removeEventListener('blur', cancel); document.removeEventListener('visibilitychange', hidden) }
   }, [capture, selected?.id, disabled, captureFamily])
 
+  const mappedCount = rows.filter(row => row.current !== 0).length
+  const shown = onlyMapped ? visible.filter(row => row.current !== 0) : visible
   return <section className="card remap-workspace">
-    <header className="remap-header"><div><span className="stick-eyebrow">{t('nav.buttons')}</span><h3>{t('buttons.title')}</h3><p>{t('remap.intro')}</p></div><details className="remap-help"><summary aria-label={t('buttons.help')}>?</summary><div>{help}</div></details></header>
+    <header className="remap-header">
+      <div><span className="stick-eyebrow">{t('nav.buttons')}</span><h3>{t('buttons.title')}</h3><p>{t('remap.intro')}</p></div>
+      <div className="remap-header-side"><span className={`pill${mappedCount ? ' good' : ''}`}>{t('remap.count').replace('{n}', String(mappedCount))}</span><details className="remap-help"><summary aria-label={t('buttons.help')}>?</summary><div>{help}</div></details></div>
+    </header>
     <div className="remap-layout">
-      <section className="remap-sources"><label className="remap-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><input type="search" placeholder={t('remap.searchButtons')} aria-label={t('remap.searchButtons')} value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <section className="remap-sources">
+        <div className="remap-toolbar">
+          <label className="remap-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><input type="search" placeholder={t('remap.searchButtons')} aria-label={t('remap.searchButtons')} value={query} onChange={e => setQuery(e.target.value)} /></label>
+          <div className="remap-filter" role="group">{([false, true] as const).map(f => <button type="button" key={String(f)} className={onlyMapped === f ? 'active' : ''} aria-pressed={onlyMapped === f} onClick={() => setOnlyMapped(f)}>{t(f ? 'remap.filterMapped' : 'remap.filterAll')}</button>)}</div>
+        </div>
         <div className="remap-source-scroll">{[false, true].map(extra => {
-          const group = visible.filter(row => row.extra === extra)
+          const group = shown.filter(row => row.extra === extra)
           if (!group.length) return null
-          return <div className="remap-source-group" key={String(extra)}><div className="remap-group-label"><span>{t(extra ? 'remap.extra' : 'remap.standard')}</span><span>{group.length}</span></div><div className="remap-source-grid">{group.map(row => <button type="button" className={`remap-source${selected?.id === row.id ? ' selected' : ''}${row.current ? ' mapped' : ''}`} key={row.id} aria-pressed={selected?.id === row.id} onClick={() => { setCapture(null); setSelectedId(row.id); setOpen(false) }}><span className="remap-source-icon">{row.icon}</span><strong>{row.name}</strong><small>{row.current ? row.effective : t('remap.original')}</small>{row.current !== 0 && <i aria-hidden="true" />}</button>)}</div></div>
-        })}{!visible.length && <p className="remap-empty">{t('remap.noResults')}</p>}</div>
+          return <div className="remap-source-group" key={String(extra)}><div className="remap-group-label"><span>{t(extra ? 'remap.extra' : 'remap.standard')}</span><span>{group.length}</span></div><div className="remap-source-grid">{group.map(row => <button type="button" className={`remap-source${selected?.id === row.id ? ' selected' : ''}${row.current ? ' mapped' : ''}`} key={row.id} aria-pressed={selected?.id === row.id} onClick={() => { setCapture(null); setSelectedId(row.id); setOpen(false) }}>
+            <span className="remap-source-icon">{row.icon}</span>
+            <span className="remap-source-name"><strong>{row.name}</strong>{row.current !== 0
+              ? <span className="remap-source-out" title={row.effective}><span aria-hidden="true">→</span><span className="remap-source-out-icon">{row.outputIcon}</span><b>{row.effective}</b></span>
+              : <small>{t('remap.original')}</small>}</span>
+          </button>)}</div></div>
+        })}{!shown.length && <p className="remap-empty">{t(onlyMapped && !query ? 'remap.noneMapped' : 'remap.noResults')}</p>}</div>
       </section>
       {selected && <section className="remap-binding">
-        <span className="stick-eyebrow">{t('remap.selected')}</span>
-        <div className="remap-preview"><div><span className="remap-preview-icon">{selected.icon}</span><strong>{selected.name}</strong></div><span className="remap-preview-arrow" aria-hidden="true">→</span><div><span className="remap-preview-icon output">{selected.current ? selected.outputIcon : selected.icon}</span><strong>{selected.current ? selected.effective : selected.name}</strong></div></div>
-        <div className="remap-binding-label">{t('buttons.target')}</div>
-        {selected.known ? <KeySelect key={selected.id} value={selected.current} disabled={disabled} open={open} onToggle={() => { setCapture(null); setOpenSlot(null); setOpen(!open) }} onClose={() => setOpen(false)} onPick={selected.onPick} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable /> : <div className="remap-readonly">{selected.effective}<small>{t('remap.readonly')}</small></div>}
+        <div className={`remap-preview${selected.current ? ' changed' : ''}`}>
+          <div><small>{t('remap.press')}</small><span className="remap-preview-icon">{selected.icon}</span><strong>{selected.name}</strong></div>
+          <svg className="remap-preview-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
+          <div><small>{t('remap.sends')}</small><span className="remap-preview-icon output">{selected.current ? selected.outputIcon : selected.icon}</span><strong>{selected.current ? selected.effective : selected.name}</strong></div>
+          <span className="remap-preview-badge"><i />{t(selected.current ? 'remap.custom' : 'remap.original')}</span>
+        </div>
+        <div className="remap-step"><div className="remap-binding-label">{t('buttons.target')}</div>
+        {selected.known ? <KeySelect key={selected.id} value={selected.current} disabled={disabled} open={open} onToggle={() => { setCapture(null); setOpenSlot(null); setOpen(!open) }} onClose={() => setOpen(false)} onPick={selected.onPick} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable /> : <div className="remap-readonly">{selected.effective}<small>{t('remap.readonly')}</small></div>}</div>
         {selected.known && selected.slots && selected.onPickSlots && (() => {
           const slots = selected.slots
           const pickSlot = (i: 1 | 2, v: number): void => {
@@ -2627,8 +2646,8 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
             setOpenSlot(null)
           }
           return (
-            <div className="remap-multi">
-              <div className="remap-capture-heading"><span>{t('remap.multiTitle')}</span></div>
+            <div className="remap-step remap-multi">
+              <div className="remap-binding-label">{t('remap.multiTitle')}</div>
               <p className="remap-capture-message">{t('remap.multiHint')}</p>
               {([1, 2] as const).map((i) => (
                 <KeySelect key={`${selected.id}-${i}`} value={slots[i]} disabled={disabled || (i === 2 && slots[1] === 0) || (!slots[0] && !selected.selfValue)} open={openSlot === i} onToggle={() => { setCapture(null); setOpen(false); setOpenSlot(openSlot === i ? null : i) }} onClose={() => setOpenSlot(null)} onPick={(v) => pickSlot(i, v)} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable />
@@ -2636,13 +2655,12 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
             </div>
           )
         })()}
-        <div className={`remap-capture-panel${capture ? ' active' : ''}`}>
+        <div className={`remap-step remap-capture-panel${capture ? ' active' : ''}`}>
           <div className="remap-capture-heading"><span>{t('remap.quickBind')}</span>{capture && <span className="remap-listening-dot" aria-hidden="true" />}</div>
           <div className="remap-capture-actions">{capture ? <button type="button" className="remap-capture-cancel" onClick={() => { setCapture(null); setCaptureMessage(t('remap.captureCancelled')) }}><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>{t('remap.captureCancel')}<kbd>Esc</kbd></button> : <>{(['controller', 'keyboard'] as const).map(mode => <button type="button" className="remap-capture-choice" key={mode} aria-label={t(mode === 'keyboard' ? 'remap.captureKeyboard' : 'remap.captureController')} disabled={disabled || !selected.known} onClick={() => { setOpen(false); setCapture(mode) }}><span className="remap-capture-icon">{mode === 'keyboard' ? <MappingTypeIcon type="keyboard" size={24} /> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h8c2.1 0 3.4 1.6 3.9 3.7l1.1 5.2c.6 2.7-1.5 4-3.4 2.1L15 14H9l-2.6 3C4.5 19 2.4 17.6 3 14.9l1.1-5.2C4.6 7.6 5.9 6 8 6Z"/><path d="M8 8.8v4M6 10.8h4"/><circle cx="15.7" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="18" cy="11.8" r=".8" fill="currentColor" stroke="none"/></svg>}</span><span>{t(mode === 'keyboard' ? 'remap.keyboardLabel' : 'remap.controllerLabel')}</span></button>)}</>}</div>
           <p className={`remap-capture-message${capture ? ' listening' : ''}`} role="status" aria-live="polite" title={t('remap.captureHint')}>{captureMessage || t('remap.captureShortHint')}</p>
         </div>
-        <div className={`remap-binding-state${selected.current ? ' changed' : ''}`}><i />{t(selected.current ? 'remap.custom' : 'remap.original')}</div>
-        <button type="button" className="btn sm ghost remap-reset" disabled={disabled || !selected.known || !selected.current} onClick={() => { setCapture(null); selected.onPick(0); setOpen(false) }}>{t('remap.reset')}</button>
+        <button type="button" className="btn ghost remap-reset" disabled={disabled || !selected.known || !selected.current} onClick={() => { setCapture(null); selected.onPick(0); setOpen(false) }}>{t('remap.reset')}</button>
         <p className="remap-apply-note">{t('remap.apply')}</p>
       </section>}
     </div>
@@ -4814,7 +4832,6 @@ export default function App(): JSX.Element {
           {tab === 'buttons' && connected && profile && (
             <>
             <div className="buttons-workspace gamesir-buttons-workspace">
-            <TriggerSettings profile={profile} edit={edit} disabled={busy || locked || calibrationRunning} />
             <RemapWorkspace
               captureFamily="gamesir"
               disabled={busy || locked}
@@ -4882,6 +4899,7 @@ export default function App(): JSX.Element {
                 })
               )}
             />
+            <TriggerSettings profile={profile} edit={edit} disabled={busy || locked || calibrationRunning} />
             </div>
             </>
           )}

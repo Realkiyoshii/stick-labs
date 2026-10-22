@@ -1298,73 +1298,10 @@ table.tbl tbody tr:hover {
 .creator-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Focused remapping workspace shared by GameSir and LeadJoy. */
-.card.remap-workspace { padding: 0; min-width: 0; overflow: visible; }
-.remap-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 22px; border-bottom: 1px solid var(--line); }
-.remap-header h3 { margin: 4px 0 6px; font-size: 20px; letter-spacing: -.025em; }
-.remap-header p { margin: 0; color: var(--text-3); font-size: 12px; }
-.remap-help { position: relative; flex-shrink: 0; }
-.remap-help summary { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid var(--line-2); border-radius: 50%; color: var(--text-3); font-size: 12px; cursor: pointer; list-style: none; }
-.remap-help summary::-webkit-details-marker { display: none; }
-.remap-help > div { position: absolute; z-index: 5; top: 34px; right: 0; width: min(420px, 65vw); padding: 16px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--bg-3); box-shadow: 0 10px 30px #0004; color: var(--text-2); font-size: 11px; line-height: 1.65; }
-.remap-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(250px, .75fr); min-height: 460px; }
-.remap-sources { min-width: 0; padding: 20px; }
-.remap-search { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-1); color: var(--text-3); }
-.remap-search input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; outline: 0; }
-.remap-search:focus-within { border-color: var(--accent); }
-.remap-source-scroll { max-height: 445px; overflow: auto; scrollbar-gutter: stable; margin: 18px -4px 0 0; padding-right: 5px; }
-.remap-source-group + .remap-source-group { margin-top: 20px; }
-.remap-group-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--text-3); font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .1em; }
-.remap-group-label > span:last-child { font: 10px 'Cascadia Mono', Consolas, monospace; color: var(--text-3); }
-.remap-source-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
-.remap-source { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 103px; padding: 12px 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-1); color: var(--text-2); font-family: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
-.remap-source:hover { background: var(--bg-3); border-color: var(--line-2); }
-.remap-source.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-1)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent); }
-.remap-source-icon { display: grid; place-items: center; height: 29px; }
-.remap-source strong { font-size: 10px; line-height: 1.3; text-align: center; }
-.remap-source small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 8px; }
-.remap-source > i { position: absolute; top: 8px; right: 8px; width: 4px; height: 4px; border-radius: 50%; background: var(--good); }
-.remap-binding { display: flex; flex-direction: column; min-width: 0; padding: 24px; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--bg-1) 40%, transparent); }
-.remap-preview { display: grid; grid-template-columns: 1fr 24px 1fr; align-items: start; gap: 8px; margin: 30px 0; }
-.remap-preview > div { display: grid; justify-items: center; gap: 12px; min-width: 0; }
-.remap-preview-icon { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--bg-1); }
-.remap-preview-icon.output { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
-.remap-preview strong { max-width: 100%; overflow-wrap: anywhere; text-align: center; color: var(--text-2); font-size: 12px; line-height: 1.4; }
-.remap-preview-arrow { padding-top: 22px; text-align: center; color: var(--text-3); font-size: 20px; }
-.remap-binding-label { margin: 0 0 8px; color: var(--text-3); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em; }
-.remap-binding [data-keyselect] { width: 100%; }
-.remap-binding [data-keyselect] > button.input { width: 100% !important; min-height: 43px; padding: 12px; background: var(--bg-1); }
-.remap-binding-state { display: flex; gap: 7px; align-items: center; margin: 14px 0 20px; color: var(--text-3); font-size: 10px; }
-.remap-binding-state i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
-.remap-binding-state.changed { color: var(--good); }
-.remap-binding-state.changed i { background: var(--good); }
-.remap-binding .remap-reset { align-self: flex-start; padding: 8px 10px; font-size: 10px; }
-.remap-apply-note { margin: auto 0 0; padding-top: 28px; color: var(--text-3); font-size: 10px; line-height: 1.65; }
-.remap-readonly { color: var(--text-2); font-size: 12px; }
-.remap-readonly small { display: block; color: var(--text-3); font-size: 10px; margin-top: 8px; }
-.remap-empty { padding: 30px 0; text-align: center; font-size: 12px; color: var(--text-3); }
-.remap-picker-search { position: sticky; top: -4px; z-index: 1; padding: 5px 2px 8px; background: var(--bg-2); }
-.remap-picker-search input { width: 100%; font-size: 12px; }
-.remap-workspace button:focus-visible, .remap-help summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lj-buttons-workspace .remap-layout { grid-template-columns: 1fr; }
 .lj-buttons-workspace .remap-binding { border-left: 0; border-top: 1px solid var(--line); }
-@media (max-width: 1000px) { .remap-source-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .remap-layout { grid-template-columns: 1fr; } .remap-binding { border-left: 0; border-top: 1px solid var(--line); } .remap-source-scroll { max-height: 280px; } .remap-source-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } .remap-apply-note { margin-top: 16px; padding-top: 0; } }
 
 /* Quick bind: paired input choices and a quiet, contained listening state. */
-.remap-capture-panel { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); }
-.remap-capture-panel.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
-.remap-capture-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
-.remap-capture-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.remap-capture-choice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 76px; padding: 10px 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
-.remap-capture-icon { display: grid; place-items: center; height: 26px; }
-.remap-capture-choice:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-2)); }
-.remap-capture-choice:disabled { opacity: .4; cursor: not-allowed; }
-.remap-capture-cancel { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; }
-.remap-capture-cancel:hover { color: var(--text); border-color: var(--accent); }
-.remap-capture-cancel kbd { margin-left: auto; padding: 2px 5px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--text-3); font: inherit; font-size: 9px; }
-.remap-capture-message { font-size: 10px; line-height: 1.6; color: var(--text-3); margin: 10px 0 0; }
-.remap-capture-message.listening { color: var(--text-2); }
-.remap-listening-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
 
 
 /* Sticks and Curves are separate workspaces; input and output have their own cards. */
@@ -1487,7 +1424,6 @@ table.tbl tbody tr:hover {
 
 .hold-curve-card { margin-top: 16px; }
 
-.remap-multi { display: grid; gap: 8px; margin-top: 12px; }
 
 /* ---------------------------------------------------------------------------
    Refresh 2026-10: calmer, roomier, fewer competing borders.
@@ -1589,3 +1525,84 @@ table.tbl tbody tr:hover {
 @keyframes write-bar-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .write-bar { animation: none; } }
 @media (max-width: 760px) { .stick-card { flex: 1 1 0; min-width: 0; padding: 12px; gap: 10px; } .stick-card-icon { width: 40px; height: 40px; } }
+
+/* Button remap: wide rows that show each binding, sticky detail panel. */
+.gamesir-buttons-workspace { grid-template-columns: minmax(0, 1fr) !important; }
+.card.remap-workspace { padding: 0; min-width: 0; overflow: visible; }
+.remap-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+.remap-header h3 { margin: 4px 0 6px; font-size: 22px; letter-spacing: -.02em; }
+.remap-header p { margin: 0; color: var(--text-3); font-size: 13px; }
+.remap-header-side { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.remap-help { position: relative; flex-shrink: 0; }
+.remap-help summary { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 50%; color: var(--text-3); cursor: pointer; list-style: none; font-size: 12px; }
+.remap-help summary::-webkit-details-marker { display: none; }
+.remap-help > div { position: absolute; z-index: 5; top: 36px; right: 0; width: min(420px, 65vw); padding: 16px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-2); box-shadow: 0 12px 30px rgba(0, 0, 0, .35); color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.remap-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; }
+.remap-sources { min-width: 0; padding: 20px 24px 24px; }
+.remap-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
+.remap-search { flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); color: var(--text-3); }
+.remap-search input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); font-family: inherit; font-size: 13px; outline: 0; }
+.remap-search:focus-within { border-color: var(--accent); }
+.remap-filter { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); }
+.remap-filter button { padding: 7px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--text-3); font: inherit; font-size: 12.5px; cursor: pointer; }
+.remap-filter button.active { background: var(--bg-3); color: var(--text); }
+.remap-source-group + .remap-source-group { margin-top: 22px; }
+.remap-group-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text-3); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em; }
+.remap-group-label > span:last-child { padding: 1px 7px; border-radius: 999px; background: var(--bg-3); font-size: 10.5px; letter-spacing: 0; }
+.remap-source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.remap-source { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 64px; padding: 10px 14px 10px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.remap-source:hover { background: var(--bg-3); border-color: var(--line-2); }
+.remap-source.mapped::before { content: ""; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.remap-source.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-1)); }
+.remap-source-icon { display: grid; place-items: center; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 10px; background: var(--bg-3); }
+.remap-source-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.remap-source-name strong { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remap-source-name small { color: var(--text-3); font-size: 11px; }
+.remap-source-out { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--accent); font-size: 12px; }
+.remap-source-out-icon { display: grid; place-items: center; flex: 0 0 auto; width: 20px; height: 20px; margin-right: 2px; transform: scale(.7); }
+.remap-source-out b { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remap-binding { position: sticky; top: 0; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 22px; border-left: 1px solid var(--line); }
+.remap-preview { display: grid; grid-template-columns: 1fr 32px 1fr; align-items: center; gap: 6px; padding: 18px 14px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-1); }
+.remap-preview.changed { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.remap-preview > div { display: grid; justify-items: center; gap: 10px; min-width: 0; }
+.remap-preview small { color: var(--text-3); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; }
+.remap-preview-icon { display: grid; place-items: center; width: 76px; height: 76px; border: 1px solid var(--line-2); border-radius: 18px; background: var(--bg-2); }
+.remap-preview-icon > * { transform: scale(1.5); }
+.remap-preview-icon.output { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.remap-preview strong { max-width: 100%; overflow-wrap: anywhere; text-align: center; font-size: 14px; }
+.remap-preview-arrow { color: var(--text-3); margin-top: 22px; }
+.remap-preview.changed .remap-preview-arrow { color: var(--accent); }
+.remap-preview-badge { grid-column: 1 / -1; justify-self: center; display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 10px; border-radius: 999px; background: var(--bg-3); color: var(--text-3); font-size: 11px; }
+.remap-preview-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.remap-preview.changed .remap-preview-badge { color: var(--accent); }
+.remap-preview.changed .remap-preview-badge i { background: var(--accent); }
+.remap-step { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); }
+.remap-binding-label { margin: 0 0 10px; color: var(--text-2); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em; }
+.remap-binding [data-keyselect] { width: 100%; }
+.remap-binding [data-keyselect] > button.input { width: 100% !important; min-height: 44px; padding: 12px; background: var(--bg-2); }
+.remap-multi { display: grid; gap: 8px; }
+.remap-multi .remap-binding-label { margin: 0; }
+.remap-reset { width: 100%; justify-content: center; }
+.remap-apply-note { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.6; text-align: center; }
+.remap-readonly { color: var(--text-2); font-size: 13px; }
+.remap-readonly small { display: block; color: var(--text-3); font-size: 11px; margin-top: 8px; }
+.remap-empty { padding: 40px 0; text-align: center; font-size: 13px; color: var(--text-3); }
+.remap-picker-search { position: sticky; top: -4px; z-index: 1; padding: 5px 2px 8px; background: var(--bg-2); }
+.remap-picker-search input { width: 100%; font-size: 12px; }
+.remap-workspace button:focus-visible, .remap-help summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.remap-capture-panel.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.remap-capture-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--text-2); font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .09em; }
+.remap-capture-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.remap-capture-choice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 80px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.remap-capture-icon { display: grid; place-items: center; height: 26px; }
+.remap-capture-choice:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-2)); }
+.remap-capture-choice:disabled { opacity: .4; cursor: not-allowed; }
+.remap-capture-cancel { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.remap-capture-cancel:hover { color: var(--text); border-color: var(--accent); }
+.remap-capture-cancel kbd { margin-left: auto; padding: 2px 6px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--text-3); font: inherit; font-size: 11px; }
+.remap-capture-message { font-size: 11.5px; line-height: 1.6; color: var(--text-3); margin: 10px 0 0; }
+.remap-multi .remap-capture-message { margin: 0 0 4px; }
+.remap-capture-message.listening { color: var(--text-2); }
+.remap-listening-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
+@media (max-width: 1000px) { .remap-layout { grid-template-columns: 1fr; } .remap-binding { position: static; border-left: 0; border-top: 1px solid var(--line); } }
+@media (max-width: 600px) { .remap-toolbar { flex-direction: column; align-items: stretch; } .remap-source-grid { grid-template-columns: 1fr; } }
