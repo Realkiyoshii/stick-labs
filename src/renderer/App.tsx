@@ -557,6 +557,68 @@ function ShiftLayerPanel({ editingLayer, normalSlot, holdKey, keepOriginal, disa
   )
 }
 
+type NavIconKind = 'overview' | 'sticks' | 'curves' | 'device' | 'buttons' | 'shift' | 'calibrate' | 'profiles' | 'lab' | 'language' | 'theme' | 'polling' | 'bits' | 'deadzone' | 'slot'
+
+/** One line-icon set for navigation and overview tiles (20×20, currentColor). */
+function NavIcon({ kind, size = 18 }: { kind: NavIconKind; size?: number }): JSX.Element {
+  const paths: Record<NavIconKind, JSX.Element> = {
+    overview: <><rect x="3" y="3" width="6" height="6" rx="1.5" /><rect x="11" y="3" width="6" height="6" rx="1.5" /><rect x="3" y="11" width="6" height="6" rx="1.5" /><rect x="11" y="11" width="6" height="6" rx="1.5" /></>,
+    sticks: <><circle cx="10" cy="10" r="7" /><circle cx="10" cy="10" r="2.5" /><path d="M10 3v2M10 15v2M3 10h2M15 10h2" /></>,
+    curves: <><path d="M3 3v14h14" /><path d="M5 15c4 0 5-9 11-10" /></>,
+    device: <><rect x="4" y="2.5" width="12" height="15" rx="3" /><path d="M8 6h4M10 13v.5" /></>,
+    buttons: <><circle cx="10" cy="5.5" r="2" /><circle cx="10" cy="14.5" r="2" /><circle cx="5.5" cy="10" r="2" /><circle cx="14.5" cy="10" r="2" /></>,
+    shift: <><path d="M10 3 3 9h3.5v4h7V9H17Z" /><path d="M6.5 16h7" /></>,
+    calibrate: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4l3 2" /></>,
+    profiles: <><rect x="3" y="4" width="14" height="4" rx="1.5" /><rect x="3" y="11" width="14" height="4" rx="1.5" /></>,
+    lab: <><path d="M8 3h4M9 3v5l-4.5 7.5A1.5 1.5 0 0 0 5.8 18h8.4a1.5 1.5 0 0 0 1.3-2.5L11 8V3" /><path d="M6.5 13h7" /></>,
+    language: <><circle cx="10" cy="10" r="7" /><path d="M3 10h14M10 3c2.2 2 2.2 12 0 14M10 3c-2.2 2-2.2 12 0 14" /></>,
+    theme: <><path d="M10 3a7 7 0 1 0 7 7 5 5 0 0 1-7-7Z" /></>,
+    polling: <><path d="M3 10h3l2-5 4 10 2-5h3" /></>,
+    bits: <><rect x="3" y="3" width="14" height="14" rx="2" /><path d="M8 3v14M12 3v14M3 8h14M3 12h14" /></>,
+    deadzone: <><circle cx="10" cy="10" r="7" /><circle cx="10" cy="10" r="3" strokeDasharray="2 2" /></>,
+    slot: <><path d="M4 5h12v10H4z" /><path d="M8 9h4" /></>
+  }
+  return <svg className="nav-icon" width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind]}</svg>
+}
+
+/** Home screen: the pad's key settings at a glance; every tile opens its tab. */
+function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
+  profile: Profile
+  slot: number
+  firmware: string | null
+  modelName: string
+  onOpen: (tab: 'sticks' | 'curves' | 'device' | 'shift') => void
+}): JSX.Element {
+  const t = useT()
+  const gear = fun.extend.reportRateGear(profile.funData)
+  const hz = REPORT_RATE_OPTIONS.find((o) => o.gear === gear)?.hz
+  const bits = fun.extend.stickResolutionBits(profile.funData)
+  const hold = holdKeyOf(profile)
+  const dz = (i: number): string => `${(stick.deadzone(profile.sticks[i]).begin / 10).toFixed(1)}%`
+  const warn = (hz !== undefined && hz < 8000) || bits < 12
+  const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device' | 'shift', bad = false): JSX.Element => (
+    <button key={key} type="button" className={`overview-tile${bad ? ' warn' : ''}`} onClick={() => onOpen(tab)}>
+      <span className="overview-tile-icon"><NavIcon kind={icon} size={20} /></span>
+      <span className="overview-tile-label">{label}</span>
+      <strong className="overview-tile-value">{value}</strong>
+    </button>
+  )
+  return (
+    <div className="overview">
+      <div className="tuning-page-heading"><h2>{modelName}</h2><p>{t('overview.sub').replace('{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{fw}', firmware ?? '—')}</p></div>
+      {warn && <div className="overview-alert">{t('overview.warn')}</div>}
+      <div className="overview-grid">
+        {tile('poll', 'polling', t('overview.polling'), hz ? (hz >= 1000 ? `${hz / 1000}K Hz` : `${hz} Hz`) : `gear ${gear}`, 'device', hz !== undefined && hz < 8000)}
+        {tile('bits', 'bits', t('overview.bits'), `${bits}-bit`, 'device', bits < 12)}
+        {tile('lc', 'curves', t('overview.leftCurve'), <CurveMiniIcon points={stick.curve(profile.sticks[0])} />, 'curves')}
+        {tile('rc', 'curves', t('overview.rightCurve'), <CurveMiniIcon points={stick.curve(profile.sticks[1])} />, 'curves')}
+        {tile('dz', 'deadzone', t('overview.deadzones'), `L ${dz(0)} · R ${dz(1)}`, 'sticks')}
+        {tile('shift', 'shift', t('overview.shift'), hold ?? t('hold.off'), 'shift')}
+      </div>
+    </div>
+  )
+}
+
 function SavedCurvePreset({ preset, max = 255, onApply, onRename, onDelete }: {
   preset: { name: string; pts: Array<{ x: number; y: number }> }
   max?: number
@@ -3229,7 +3291,7 @@ export default function App(): JSX.Element {
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
   const [freshUndo, setFreshUndo] = useState<{ path: string | null; slot: number; model: string; bytes: Uint8Array; dirty: boolean; designs: Array<string | null>; modes: Record<string, boolean> } | null>(null)
   const [calibrationRunning, setCalibrationRunning] = useState(false)
-  const [tab, changeTab] = useState<'sticks' | 'curves' | 'device' | 'buttons' | 'shift' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
+  const [tab, changeTab] = useState<'overview' | 'sticks' | 'curves' | 'device' | 'buttons' | 'shift' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('overview')
   const setTab = (next: typeof tab): void => {
     if (calibrationRunning && next !== 'calibrate') { setErr(t('cal.web.leave')); return }
     changeTab(next)
@@ -4023,58 +4085,43 @@ export default function App(): JSX.Element {
           </div>
         </div>
         <nav className="nav">
-          <div className="nav-group">
-            <h4>{t('nav.tuning')}</h4>
-            <button type="button" className={`nav-item${tab === 'sticks' ? ' active' : ''}`} onClick={() => setTab('sticks')}>
-              <StickSideIcon side="left" size={17} />
-              {t('nav.sticks')}
-            </button>
-            <button type="button" className={`nav-item${tab === 'curves' ? ' active' : ''}`} onClick={() => setTab('curves')}>
-              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M3 3v14h14"/><path d="M5 14c7 0 3-9 10-9"/></svg>
-              {t('nav.curves')}
-            </button>
-            <button type="button" className={`nav-item${tab === 'device' ? ' active' : ''}`} onClick={() => setTab('device')}>
-              <DeviceIcon kind="rate" size={17} />
-              {t('nav.device')}
-            </button>
-            <button type="button" className={`nav-item${tab === 'buttons' ? ' active' : ''}`} onClick={() => setTab('buttons')}>
-              <KeyIcon value={9} size={17} />
-              {t('nav.buttons')}
-            </button>
-            {!isLj && (
-              <button type="button" className={`nav-item${tab === 'shift' ? ' active' : ''}`} onClick={() => setTab('shift')}>
-                <KeyIcon value={SHIFT_KEY} size={17} />
-                {t('nav.shift')}
+          {(() => {
+            const item = (id: typeof tab, icon: NavIconKind, label: string): JSX.Element => (
+              <button key={id} type="button" className={`nav-item${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>
+                <NavIcon kind={icon} />
+                {label}
               </button>
-            )}
-          </div>
-          <details className="nav-more" open={['calibrate', 'profiles', 'lab', 'language', 'theme'].includes(tab)}>
-            <summary>{t('nav.moreTools')}</summary>
-            <div className="nav-group">
-              <h4>{t('nav.tuning')}</h4>
-              <button type="button" className={`nav-item${tab === 'calibrate' ? ' active' : ''}`} onClick={() => setTab('calibrate')}>
-                {t('nav.calibrate')}
-              </button>
-            </div>
-            <div className="nav-group">
-              <h4>{t('nav.data')}</h4>
-            <button type="button" className={`nav-item${tab === 'profiles' ? ' active' : ''}`} onClick={() => setTab('profiles')}>
-              {t('nav.profiles')}
-            </button>
-            <button type="button" className={`nav-item${tab === 'lab' ? ' active' : ''}`} onClick={() => setTab('lab')}>
-              {t('nav.lab')}
-            </button>
-            </div>
-            <div className="nav-group">
-              <h4>{t('nav.app')}</h4>
-            <button type="button" className={`nav-item${tab === 'language' ? ' active' : ''}`} onClick={() => setTab('language')}>
-              {t('nav.language')}
-            </button>
-            <button type="button" className={`nav-item${tab === 'theme' ? ' active' : ''}`} onClick={() => setTab('theme')}>
-              {t('nav.theme')}
-            </button>
-            </div>
-          </details>
+            )
+            return (
+              <>
+                <div className="nav-group">{item('overview', 'overview', t('nav.overview'))}</div>
+                <div className="nav-group">
+                  <h4>{t('nav.aim')}</h4>
+                  {item('sticks', 'sticks', t('nav.sticks'))}
+                  {item('curves', 'curves', t('nav.curves'))}
+                  {!isLj && item('shift', 'shift', t('nav.shift'))}
+                </div>
+                <div className="nav-group">
+                  <h4>{t('nav.controls')}</h4>
+                  {item('buttons', 'buttons', t('nav.buttons'))}
+                </div>
+                <div className="nav-group">
+                  <h4>{t('nav.setup')}</h4>
+                  {item('device', 'device', t('nav.device'))}
+                  {item('calibrate', 'calibrate', t('nav.calibrate'))}
+                  {item('profiles', 'profiles', t('nav.profiles'))}
+                </div>
+                <details className="nav-more" open={['lab', 'language', 'theme'].includes(tab)}>
+                  <summary>{t('nav.moreTools')}</summary>
+                  <div className="nav-group">
+                    {item('lab', 'lab', t('nav.lab'))}
+                    {item('language', 'language', t('nav.language'))}
+                    {item('theme', 'theme', t('nav.theme'))}
+                  </div>
+                </details>
+              </>
+            )
+          })()}
         </nav>
         <div className="stack side-panel" style={{ gap: 10 }}>
           <div className="side-tools">
@@ -4744,6 +4791,12 @@ export default function App(): JSX.Element {
             <p className="clean-profile-detail">{t('clean.limits')}</p>
             <div className="row wrap" style={{ gap: 10 }}><button type="button" className="btn" disabled={busy || locked || calibrationRunning} onClick={stageCleanProfile}>{t('clean.action')}</button>{freshUndo?.path === connPath && freshUndo?.slot === slot && freshUndo?.model === modelId && <button type="button" className="btn ghost" disabled={busy || calibrationRunning} onClick={undoCleanProfile}>{t('clean.undo')}</button>}</div>
           </section>}
+          {tab === 'overview' && connected && profile && !isLj && (
+            <OverviewPanel profile={profile} slot={slot} firmware={info?.firmware ?? null} modelName={model?.marketingName ?? modelId} onOpen={(next) => setTab(next)} />
+          )}
+          {tab === 'overview' && connected && isLj && (
+            <div className="msg"><h3>{t('overview.connectTitle')}</h3><p>{t('overview.connectBody')}</p></div>
+          )}
           {tab === 'shift' && connected && profile && !isLj && ['G7ProCE', 'T3CE'].includes(modelId) && (
             <ShiftLayerPanel
               editingLayer={slot === SHIFT_PROFILE}
