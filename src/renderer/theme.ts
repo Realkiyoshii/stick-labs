@@ -79,6 +79,18 @@ export const THEMES: ReadonlyArray<AppTheme> = [
     }
   },
   {
+    id: 'apex',
+    label: 'Apex Legends',
+    vars: {
+      '--bg': '#0d0d0e', '--bg-1': '#161617', '--bg-2': '#1f1e1f', '--bg-3': '#2a2828',
+      '--line': '#332f2f', '--line-2': '#4d4444',
+      '--text': '#f2efe9', '--text-2': '#b9b1a7', '--text-3': '#7a716a',
+      '--accent': '#da292a', '--accent-2': '#ff5d4f', '--on-accent': '#ffffff',
+      '--good': '#5fd068', '--warn': '#f2a93b', '--bad': '#ff3b30', '--violet': '#b07cff',
+      '--radius': '3px', '--radius-sm': '2px'
+    }
+  },
+  {
     id: 'halloween',
     label: 'Halloween',
     vars: {
