@@ -4076,7 +4076,8 @@ export default function App(): JSX.Element {
             </div>
           </details>
         </nav>
-        <div className="stack" style={{ gap: 10 }}>
+        <div className="stack side-panel" style={{ gap: 10 }}>
+          <div className="side-tools">
           <button className="btn ghost sm" onClick={() => void refresh()}>{t('side.rescan')}</button>
           <button
             className="btn ghost sm"
@@ -4102,8 +4103,9 @@ export default function App(): JSX.Element {
           >
             {t('side.copy')}
           </button>
-          {primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} />)}
-          {otherCandidates.length > 0 && (
+          </div>
+          {!connected && primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} />)}
+          {!connected && otherCandidates.length > 0 && (
             <details className="candidate-more">
               <summary>{t('side.otherControllers')} <span className="pill">{otherCandidates.length}</span></summary>
               <div className="stack">
@@ -4113,7 +4115,7 @@ export default function App(): JSX.Element {
           )}
           {connected && (
             <button
-              className="btn ghost sm"
+              className="btn ghost sm side-disconnect"
               onClick={() => {
                 void api().disconnect()
                 setConnPath(null)
@@ -4132,8 +4134,9 @@ export default function App(): JSX.Element {
             </button>
           )}
           {info && (
-            <div className="note">
-              <>{t('msg.fw')} {info.firmware} · {t('msg.liveSlot')} P{info.currentProfile}<br />{model ? model.marketingName : t('msg.unknownModel')}</>
+            <div className="device-chip">
+              <strong>{model ? model.marketingName : t('msg.unknownModel')}</strong>
+              <span>{t('msg.fw')} {info.firmware} · {t('msg.liveSlot')} P{info.currentProfile}</span>
             </div>
           )}
           {isLj && ljSnap && (
@@ -4194,7 +4197,6 @@ export default function App(): JSX.Element {
         <header className="topbar">
           <div className="row" style={{ gap: 12 }}>
             <h2>Stick Labs</h2>
-            <span className="sub">{t('topbar.sub')}</span>
           </div>
           <div className="row" style={{ gap: 8 }}>
             {connected && (isLj
@@ -4260,7 +4262,7 @@ export default function App(): JSX.Element {
           )}
           {isLj && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' || tab === 'shift' ? 'none' : undefined }}>
+              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
                     <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
@@ -4356,7 +4358,7 @@ export default function App(): JSX.Element {
           )}
           {connected && profile && pkt && dz && fd && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' || tab === 'shift' ? 'none' : undefined }}>
+              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
                     <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
@@ -4621,7 +4623,6 @@ export default function App(): JSX.Element {
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="card device-polling-card">
                     <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('device.polling')}</h3></div><DeviceIcon kind="polling" size={24} /></div>
-                    <div className="device-summary-pills">{allRates.map((o) => <span className="pill" key={o.gear}>{o.hz >= 1000 ? `${o.hz / 1000}K` : `${o.hz}`} Hz</span>)}</div>
                     <Hint>Report-rate gear (Fun_Data +14){model ? ` · ${model.marketingName} offers ${allRates.length} gears` : ''}. Hz labels are the vendor's claim; measured input stays ~250–500/s.</Hint>
                     <div className="choice" style={{ margin: '10px 0' }}>
                       {allRates.map((o) => (
