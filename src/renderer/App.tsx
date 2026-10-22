@@ -234,7 +234,8 @@ function WriteReview({ slot, items, busy, onCancel, onWrite }: { slot: number; i
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onCancel])
-  return <div className="review-backdrop" role="presentation" onClick={onCancel}>
+  // Portaled to <body>: inside the top bar it would sit under the page area's own layer.
+  return createPortal(<div className="review-backdrop" role="presentation" onClick={onCancel}>
     <div className="review-dialog" role="dialog" aria-modal="true" aria-labelledby="review-title" onClick={(e) => e.stopPropagation()}>
       <h3 id="review-title">{t('review.title').replace('P{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{slot}', String(slot))}</h3>
       {items.length === 0 ? <p className="review-empty">{t('review.none')}</p> : <ul className="review-list">
@@ -248,7 +249,7 @@ function WriteReview({ slot, items, busy, onCancel, onWrite }: { slot: number; i
         <button type="button" className="btn sm primary" disabled={busy} autoFocus onClick={onWrite}>{t('top.write')}</button>
       </div>
     </div>
-  </div>
+  </div>, document.body)
 }
 
 function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_INFINITY, overlay, max = 255, height = 240, spline = false, preview, liveDot }: { points: Array<{ x: number; y: number }>; onChange?: (next: Array<{ x: number; y: number }>) => void; onAddPoint?: (point: { x: number; y: number }) => void; maxPoints?: number; overlay?: Array<{ x: number; y: number }>; max?: number; height?: number; spline?: boolean; /** Linear/Smooth/Delay: draw this line instead of the points. */ preview?: Array<{ x: number; y: number }>; /** Live stick position on the curve, plot units. */ liveDot?: { x: number; y: number } | null }): JSX.Element {
