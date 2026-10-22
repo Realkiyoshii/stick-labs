@@ -35,7 +35,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - run: npm ci
       - run: npm run typecheck
-      - run: node scripts/test.mjs tests/leadjoy.ts tests/leadjoy-session.ts tests/review.ts tests/curveadjust.ts tests/sharecode.ts tests/community.ts
+      - run: node scripts/test.mjs tests/leadjoy.ts tests/leadjoy-session.ts tests/review.ts tests/curveadjust.ts tests/sharecode.ts tests/community.ts tests/shiftlayer.ts
       - run: npm run build:web
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

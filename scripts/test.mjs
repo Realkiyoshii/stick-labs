@@ -28,6 +28,7 @@ const entry =
         'tests/leadjoy.ts',
         'tests/sharecode.ts',
         'tests/community.ts',
+        'tests/shiftlayer.ts',
         'tests/curveidentity.ts',
         'tests/splinecurve.ts',
         'tests/splinemode.ts',

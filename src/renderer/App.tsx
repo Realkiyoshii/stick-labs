@@ -7,6 +7,7 @@ import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/cu
 import { describeProfileChanges, type ReviewItem } from '@shared/review'
 import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
 import { applySharedProfile, decodeCurve, decodeProfile, encodeCurve, encodeProfile, rescaleCurve, ShareCodeError } from '@shared/sharecode'
+import { buildShiftLayer, holdKeyOf, HOLD_KEYS, setHoldKey, type HoldKey } from '@shared/shiftlayer'
 import { COMMUNITY_FEED_URL, COMMUNITY_GAMES, curvePageUrl, filterCurves, parseFeed, submitUrl, to255, type CommunityCurve, type CommunitySort } from '@shared/community'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
@@ -494,6 +495,53 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
       )}
       {list.length > shown && <button className="btn sm ghost" onClick={() => setShown((n) => n + COMMUNITY_PAGE)}>{t('community.more').replace('{n}', String(list.length - shown))}</button>}
     </section>
+  )
+}
+
+/** Hold a trigger or button to use a second right-stick curve (firmware Shift layer). */
+function HoldCurveCard({ holdKey, onHoldKey, curve, onCurve, normal, disabled }: {
+  holdKey: HoldKey | null
+  onHoldKey: (key: HoldKey | null) => void
+  curve: Array<{ x: number; y: number }> | null
+  onCurve: (pts: Array<{ x: number; y: number }>) => void
+  /** The normal right-stick curve, drawn behind for comparison. */
+  normal: Array<{ x: number; y: number }>
+  disabled: boolean
+}): JSX.Element {
+  const t = useT()
+  return (
+    <div className="card hold-curve-card">
+      <div className="stick-panel-heading">
+        <div><span className="stick-eyebrow">{t('hold.eyebrow')}</span><h3>{t('hold.title')}</h3></div>
+        <span className="pill warn">Beta</span>
+      </div>
+      <Hint>{t('hold.hint')}</Hint>
+      <div className="choice" style={{ margin: '10px 0' }}>
+        <button className={`choice-btn${holdKey === null ? ' active' : ''}`} disabled={disabled} onClick={() => onHoldKey(null)}><span className="choice-label">{t('hold.off')}</span></button>
+        {HOLD_KEYS.map((k) => (
+          <button key={k} className={`choice-btn${holdKey === k ? ' active' : ''}`} disabled={disabled} onClick={() => onHoldKey(k)}><span className="choice-label">{k}</span></button>
+        ))}
+      </div>
+      {holdKey && curve && (
+        <>
+          <p className="note">{t('hold.editing').replace('{key}', holdKey)}</p>
+          <CurvePlot points={curve} overlay={normal} height={220} maxPoints={9} onChange={(next) => onCurve(next)} />
+          <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
+            <select className="input" style={{ maxWidth: 260 }} disabled={disabled} value="" onChange={(e) => {
+              const pick = e.target.value
+              if (pick === '__normal') onCurve(normal.map((q) => ({ ...q })))
+              else if (AIM_CURVES[pick]) onCurve(AIM_CURVES[pick].pts.map((q) => ({ ...q })))
+            }}>
+              <option value="">{t('hold.preset')}</option>
+              <option value="__normal">{t('hold.sameAsNormal')}</option>
+              {Object.entries(AIM_CURVES).map(([key, c]) => <option key={key} value={key}>{c.label}</option>)}
+            </select>
+          </div>
+          {(holdKey === 'L2' || holdKey === 'R2') && <p className="note">{t('shift.triggersHint')}</p>}
+          <p className="note">{t('hold.shared')}</p>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -3160,6 +3208,9 @@ export default function App(): JSX.Element {
   // slot+stick so a half-finished shape survives a reload. Spline mode samples
   // a bounded smooth design into the same five firmware slots.
   const [design, setDesign] = useState<Array<{ x: number; y: number }>>([])
+  // Hold-to-switch: the right-stick curve kept in the Shift layer (profile 5).
+  const [shiftCurve, setShiftCurve] = useState<Array<{ x: number; y: number }> | null>(null)
+  const [shiftDirty, setShiftDirty] = useState(false)
   const [splineModes, setSplineModes] = useState<Record<string, boolean>>({})
   const [ljCurveEditors, setLjCurveEditors] = useState<Record<string, CurveEditorDraft>>({})
   const splineKey = `${connPath}.${slot}.${which}`
@@ -3527,6 +3578,15 @@ export default function App(): JSX.Element {
       setSlot(s)
       setDirty(false)
       setLoadId((n) => n + 1)
+      setShiftDirty(false)
+      if (s !== SHIFT_PROFILE && ['G7ProCE', 'T3CE'].includes(modelId)) {
+        try {
+          const layer = parseProfile(b64ToBytes((await api().readProfile(SHIFT_PROFILE, len)).bytes), modelId)
+          setShiftCurve(stick.linearModule(layer.sticks[1]).en ? stick.curve(layer.sticks[1]) : null)
+        } catch {
+          setShiftCurve(null)
+        }
+      }
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -3539,7 +3599,7 @@ export default function App(): JSX.Element {
     if (!blob) return
     if (profile && (outLock[0] || outLock[1]) && stick.lockStickOutput(profile.sticks, outLock)) syncBlob()
     try {
-      setReview(padBytes && padBytes.length === blob.length ? describeProfileChanges(padBytes, blob, modelId) : [{ key: 'review.full' }])
+      setReview([...(padBytes && padBytes.length === blob.length ? describeProfileChanges(padBytes, blob, modelId) : [{ key: 'review.full' }]), ...(shiftDirty ? [{ key: 'review.holdCurve' }] : [])])
     } catch {
       setReview([{ key: 'review.full' }])
     }
@@ -3562,6 +3622,13 @@ export default function App(): JSX.Element {
         const liveNow = info?.currentProfile
         setSavedAt({ slot, at: Date.now() })
         setDirty(false)
+        // Hold-to-switch: keep the Shift layer a copy of this profile with the held curve.
+        const held = profile && holdKeyOf(profile) ? shiftCurve ?? stick.curve(profile.sticks[1]) : null
+        if (slot !== SHIFT_PROFILE && held && ['G7ProCE', 'T3CE'].includes(modelId)) {
+          const layer = await api().writeProfile(SHIFT_PROFILE, bytesToB64(buildShiftLayer(blob, modelId, sampleDesign(held, false))), modelLen)
+          if (layer.verified) setShiftDirty(false)
+          else setErr(t('hold.layerFailed'))
+        }
         // The Shift layer is never switched to: the pad uses it while the Shift button is held.
         if (liveNow !== undefined && liveNow !== slot && slot !== SHIFT_PROFILE) {
           // One step: apply by switching onto the written slot, then prove
@@ -4517,6 +4584,20 @@ export default function App(): JSX.Element {
                     </section>
                     </div>
                   </div>
+                  {slot !== SHIFT_PROFILE && ['G7ProCE', 'T3CE'].includes(modelId) && (
+                    <HoldCurveCard
+                      holdKey={holdKeyOf(profile)}
+                      disabled={busy || locked || calibrationRunning}
+                      normal={stick.curve(profile.sticks[1])}
+                      curve={shiftCurve ?? (holdKeyOf(profile) ? stick.curve(profile.sticks[1]) : null)}
+                      onHoldKey={(key) => {
+                        edit(() => setHoldKey(profile, key))
+                        if (key && !shiftCurve) setShiftCurve(stick.curve(profile.sticks[1]))
+                        if (key) setShiftDirty(true)
+                      }}
+                      onCurve={(pts) => { setShiftCurve(pts); setShiftDirty(true); setDirty(true) }}
+                    />
+                  )}
               </div>}
               {tab === 'device' && (
               <div className="two device-workspace" style={{ alignItems: 'start' }}>

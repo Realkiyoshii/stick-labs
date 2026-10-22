@@ -1479,3 +1479,5 @@ table.tbl tbody tr:hover {
 .community-load:hover .community-name { text-decoration: underline; }
 .community-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .community-meta { font-size: 11px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hold-curve-card { margin-top: 16px; }
