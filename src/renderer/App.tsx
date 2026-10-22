@@ -498,6 +498,12 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
   )
 }
 
+/**
+ * Off until a held key is proven to switch the stick curve on hardware: the
+ * first T3CE tests changed nothing, and a trigger set to Shift loses ADS.
+ */
+const HOLD_CURVE_READY = false
+
 /** Hold a trigger or button to use a second right-stick curve (firmware Shift layer). */
 function HoldCurveCard({ holdKey, onHoldKey, curve, onCurve, normal, disabled }: {
   holdKey: HoldKey | null
@@ -3624,7 +3630,7 @@ export default function App(): JSX.Element {
         setDirty(false)
         // Hold-to-switch: keep the Shift layer a copy of this profile with the held curve.
         const held = profile && holdKeyOf(profile) ? shiftCurve ?? stick.curve(profile.sticks[1]) : null
-        if (slot !== SHIFT_PROFILE && held && ['G7ProCE', 'T3CE'].includes(modelId)) {
+        if (HOLD_CURVE_READY && slot !== SHIFT_PROFILE && held && ['G7ProCE', 'T3CE'].includes(modelId)) {
           const layer = await api().writeProfile(SHIFT_PROFILE, bytesToB64(buildShiftLayer(blob, modelId, sampleDesign(held, false))), modelLen)
           if (layer.verified) setShiftDirty(false)
           else setErr(t('hold.layerFailed'))
@@ -4584,7 +4590,7 @@ export default function App(): JSX.Element {
                     </section>
                     </div>
                   </div>
-                  {slot !== SHIFT_PROFILE && ['G7ProCE', 'T3CE'].includes(modelId) && (
+                  {HOLD_CURVE_READY && slot !== SHIFT_PROFILE && ['G7ProCE', 'T3CE'].includes(modelId) && (
                     <HoldCurveCard
                       holdKey={holdKeyOf(profile)}
                       disabled={busy || locked || calibrationRunning}
