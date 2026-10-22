@@ -7,7 +7,7 @@ import { CURVE_TYPES, connectCurvePreview, curveTypeHasSlider } from '@shared/cu
 import { describeProfileChanges, type ReviewItem } from '@shared/review'
 import { dotOnCurve, stickOutputMagnitude } from '@shared/liveDot'
 import { applySharedProfile, decodeCurve, decodeProfile, encodeCurve, encodeProfile, rescaleCurve, ShareCodeError } from '@shared/sharecode'
-import { buildShiftLayer, holdKeyOf, HOLD_KEYS, setHoldKey, type HoldKey } from '@shared/shiftlayer'
+import { holdKeepsOriginal, holdKeyOf, HOLD_KEYS, setHoldKey, type HoldKey } from '@shared/shiftlayer'
 import { COMMUNITY_FEED_URL, COMMUNITY_GAMES, curvePageUrl, filterCurves, parseFeed, submitUrl, to255, type CommunityCurve, type CommunitySort } from '@shared/community'
 import { parseProfile, serializeProfile, fun, stick, button, trigger, LINEAR_CURVE, looksLikeCEProfile, type Packet, type Profile } from '@shared/profile'
 import { PROFILE_LENGTH, REPORT_RATE_OPTIONS, STICK_RESOLUTION_OPTIONS, STANDARD_BUTTONS, CENTER_NUDGE, CalMode, CalPart } from '@shared/protocol'
@@ -499,54 +499,60 @@ function CommunityCurves({ shareCode, onApply, onSave }: {
 }
 
 /**
- * Off until a held key is proven to switch the stick curve on hardware: the
- * first T3CE tests changed nothing, and a trigger set to Shift loses ADS.
+ * Shift layer (GameSir 8K firmware): while a key bound to Shift (231) is
+ * held, the pad uses profile 5 instead of the active profile. A key can also
+ * keep its own output (multi-bind "L2 + Shift") so it still aims.
  */
-const HOLD_CURVE_READY = false
-
-/** Hold a trigger or button to use a second right-stick curve (firmware Shift layer). */
-function HoldCurveCard({ holdKey, onHoldKey, curve, onCurve, normal, disabled }: {
+function ShiftLayerPanel({ editingLayer, normalSlot, holdKey, keepOriginal, disabled, onHold, onEditLayer, onBack, onCopy }: {
+  editingLayer: boolean
+  normalSlot: number
   holdKey: HoldKey | null
-  onHoldKey: (key: HoldKey | null) => void
-  curve: Array<{ x: number; y: number }> | null
-  onCurve: (pts: Array<{ x: number; y: number }>) => void
-  /** The normal right-stick curve, drawn behind for comparison. */
-  normal: Array<{ x: number; y: number }>
+  keepOriginal: boolean
   disabled: boolean
+  onHold: (key: HoldKey | null, keep: boolean) => void
+  onEditLayer: () => void
+  onBack: () => void
+  onCopy: () => void
 }): JSX.Element {
   const t = useT()
+  const p = `P${normalSlot}`
   return (
-    <div className="card hold-curve-card">
-      <div className="stick-panel-heading">
-        <div><span className="stick-eyebrow">{t('hold.eyebrow')}</span><h3>{t('hold.title')}</h3></div>
-        <span className="pill warn">Beta</span>
+    <div className="shift-workspace">
+      <div className="tuning-page-heading"><h2>{t('nav.shift')}</h2><p>{t('shiftTab.help')}</p></div>
+      <div className="card">
+        <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('shiftTab.step1')}</span><h3>{t('shiftTab.keyTitle').replace('{slot}', p)}</h3></div><span className="pill warn">Beta</span></div>
+        {editingLayer ? (
+          <p className="note">{t('shiftTab.keyFromNormal').replace('{slot}', p)}</p>
+        ) : (
+          <>
+            <div className="choice" style={{ margin: '10px 0' }}>
+              <button className={`choice-btn${holdKey === null ? ' active' : ''}`} disabled={disabled} onClick={() => onHold(null, keepOriginal)}><span className="choice-label">{t('hold.off')}</span></button>
+              {HOLD_KEYS.map((k) => (
+                <button key={k} className={`choice-btn${holdKey === k ? ' active' : ''}`} disabled={disabled} onClick={() => onHold(k, keepOriginal)}><span className="choice-label">{k}</span></button>
+              ))}
+            </div>
+            <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <input type="checkbox" checked={keepOriginal} disabled={disabled || !holdKey} onChange={(e) => onHold(holdKey, e.target.checked)} />
+              <span>{t('shiftTab.keep').replace(/\{key\}/g, holdKey ?? 'L2')}</span>
+            </label>
+            <p className="note">{holdKey ? t(keepOriginal ? 'shiftTab.keyOnKeep' : 'shiftTab.keyOnOnly').replace(/\{key\}/g, holdKey) : t('shiftTab.keyOff')}</p>
+          </>
+        )}
       </div>
-      <Hint>{t('hold.hint')}</Hint>
-      <div className="choice" style={{ margin: '10px 0' }}>
-        <button className={`choice-btn${holdKey === null ? ' active' : ''}`} disabled={disabled} onClick={() => onHoldKey(null)}><span className="choice-label">{t('hold.off')}</span></button>
-        {HOLD_KEYS.map((k) => (
-          <button key={k} className={`choice-btn${holdKey === k ? ' active' : ''}`} disabled={disabled} onClick={() => onHoldKey(k)}><span className="choice-label">{k}</span></button>
-        ))}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('shiftTab.step2')}</span><h3>{t('shiftTab.layerTitle')}</h3></div></div>
+        <p className="note">{t(editingLayer ? 'shiftTab.editingNow' : 'shiftTab.layerHelp')}</p>
+        <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+          {editingLayer ? (
+            <>
+              <button className="btn sm" disabled={disabled} onClick={onCopy}>{t('shift.copy').replace('{slot}', p)}</button>
+              <button className="btn sm ghost" disabled={disabled} onClick={onBack}>{t('shiftTab.back').replace('{slot}', p)}</button>
+            </>
+          ) : (
+            <button className="btn sm primary" disabled={disabled} onClick={onEditLayer}>{t('shiftTab.edit')}</button>
+          )}
+        </div>
       </div>
-      {holdKey && curve && (
-        <>
-          <p className="note">{t('hold.editing').replace('{key}', holdKey)}</p>
-          <CurvePlot points={curve} overlay={normal} height={220} maxPoints={9} onChange={(next) => onCurve(next)} />
-          <div className="row wrap" style={{ gap: 8, margin: '10px 0' }}>
-            <select className="input" style={{ maxWidth: 260 }} disabled={disabled} value="" onChange={(e) => {
-              const pick = e.target.value
-              if (pick === '__normal') onCurve(normal.map((q) => ({ ...q })))
-              else if (AIM_CURVES[pick]) onCurve(AIM_CURVES[pick].pts.map((q) => ({ ...q })))
-            }}>
-              <option value="">{t('hold.preset')}</option>
-              <option value="__normal">{t('hold.sameAsNormal')}</option>
-              {Object.entries(AIM_CURVES).map(([key, c]) => <option key={key} value={key}>{c.label}</option>)}
-            </select>
-          </div>
-          {(holdKey === 'L2' || holdKey === 'R2') && <p className="note">{t('shift.triggersHint')}</p>}
-          <p className="note">{t('hold.shared')}</p>
-        </>
-      )}
     </div>
   )
 }
@@ -2434,6 +2440,11 @@ type RemapSource = {
   extra: boolean
   known: boolean
   onPick: (value: number) => void
+  /** Multi-bind (GameSir 8K): all three output slots, pressed together. */
+  slots?: [number, number, number]
+  /** The key's own value, used as output 1 when extras are added to an unmapped key. */
+  selfValue?: number
+  onPickSlots?: (values: [number, number, number]) => void
 }
 
 function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, captureFamily }: {
@@ -2447,6 +2458,7 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
 }): JSX.Element {
   const t = useT()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [openSlot, setOpenSlot] = useState<1 | 2 | null>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const selected = rows.find(row => row.id === selectedId) ?? rows[0]
@@ -2528,7 +2540,30 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
         <span className="stick-eyebrow">{t('remap.selected')}</span>
         <div className="remap-preview"><div><span className="remap-preview-icon">{selected.icon}</span><strong>{selected.name}</strong></div><span className="remap-preview-arrow" aria-hidden="true">→</span><div><span className="remap-preview-icon output">{selected.current ? selected.outputIcon : selected.icon}</span><strong>{selected.current ? selected.effective : selected.name}</strong></div></div>
         <div className="remap-binding-label">{t('buttons.target')}</div>
-        {selected.known ? <KeySelect key={selected.id} value={selected.current} disabled={disabled} open={open} onToggle={() => { setCapture(null); setOpen(!open) }} onClose={() => setOpen(false)} onPick={selected.onPick} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable /> : <div className="remap-readonly">{selected.effective}<small>{t('remap.readonly')}</small></div>}
+        {selected.known ? <KeySelect key={selected.id} value={selected.current} disabled={disabled} open={open} onToggle={() => { setCapture(null); setOpenSlot(null); setOpen(!open) }} onClose={() => setOpen(false)} onPick={selected.onPick} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable /> : <div className="remap-readonly">{selected.effective}<small>{t('remap.readonly')}</small></div>}
+        {selected.known && selected.slots && selected.onPickSlots && (() => {
+          const slots = selected.slots
+          const pickSlot = (i: 1 | 2, v: number): void => {
+            const next: [number, number, number] = [slots[0] || selected.selfValue || 0, slots[1], slots[2]]
+            next[i] = v
+            // Keep outputs packed from slot 1 so the pad never sees a gap.
+            const packed = next.filter((x) => x !== 0)
+            const out: [number, number, number] = [packed[0] ?? 0, packed[1] ?? 0, packed[2] ?? 0]
+            // Only the key's own output left: back to plain "original".
+            if (out[1] === 0 && out[0] === selected.selfValue) out[0] = 0
+            selected.onPickSlots?.(out)
+            setOpenSlot(null)
+          }
+          return (
+            <div className="remap-multi">
+              <div className="remap-capture-heading"><span>{t('remap.multiTitle')}</span></div>
+              <p className="remap-capture-message">{t('remap.multiHint')}</p>
+              {([1, 2] as const).map((i) => (
+                <KeySelect key={`${selected.id}-${i}`} value={slots[i]} disabled={disabled || (i === 2 && slots[1] === 0) || (!slots[0] && !selected.selfValue)} open={openSlot === i} onToggle={() => { setCapture(null); setOpen(false); setOpenSlot(openSlot === i ? null : i) }} onClose={() => setOpenSlot(null)} onPick={(v) => pickSlot(i, v)} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable />
+              ))}
+            </div>
+          )
+        })()}
         <div className={`remap-capture-panel${capture ? ' active' : ''}`}>
           <div className="remap-capture-heading"><span>{t('remap.quickBind')}</span>{capture && <span className="remap-listening-dot" aria-hidden="true" />}</div>
           <div className="remap-capture-actions">{capture ? <button type="button" className="remap-capture-cancel" onClick={() => { setCapture(null); setCaptureMessage(t('remap.captureCancelled')) }}><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>{t('remap.captureCancel')}<kbd>Esc</kbd></button> : <>{(['controller', 'keyboard'] as const).map(mode => <button type="button" className="remap-capture-choice" key={mode} aria-label={t(mode === 'keyboard' ? 'remap.captureKeyboard' : 'remap.captureController')} disabled={disabled || !selected.known} onClick={() => { setOpen(false); setCapture(mode) }}><span className="remap-capture-icon">{mode === 'keyboard' ? <MappingTypeIcon type="keyboard" size={24} /> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h8c2.1 0 3.4 1.6 3.9 3.7l1.1 5.2c.6 2.7-1.5 4-3.4 2.1L15 14H9l-2.6 3C4.5 19 2.4 17.6 3 14.9l1.1-5.2C4.6 7.6 5.9 6 8 6Z"/><path d="M8 8.8v4M6 10.8h4"/><circle cx="15.7" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="18" cy="11.8" r=".8" fill="currentColor" stroke="none"/></svg>}</span><span>{t(mode === 'keyboard' ? 'remap.keyboardLabel' : 'remap.controllerLabel')}</span></button>)}</>}</div>
@@ -3194,7 +3229,7 @@ export default function App(): JSX.Element {
   const [savedAt, setSavedAt] = useState<{ slot: number; at: number } | null>(null)
   const [freshUndo, setFreshUndo] = useState<{ path: string | null; slot: number; model: string; bytes: Uint8Array; dirty: boolean; designs: Array<string | null>; modes: Record<string, boolean> } | null>(null)
   const [calibrationRunning, setCalibrationRunning] = useState(false)
-  const [tab, changeTab] = useState<'sticks' | 'curves' | 'device' | 'buttons' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
+  const [tab, changeTab] = useState<'sticks' | 'curves' | 'device' | 'buttons' | 'shift' | 'profiles' | 'lab' | 'calibrate' | 'language' | 'theme'>('sticks')
   const setTab = (next: typeof tab): void => {
     if (calibrationRunning && next !== 'calibrate') { setErr(t('cal.web.leave')); return }
     changeTab(next)
@@ -3214,9 +3249,8 @@ export default function App(): JSX.Element {
   // slot+stick so a half-finished shape survives a reload. Spline mode samples
   // a bounded smooth design into the same five firmware slots.
   const [design, setDesign] = useState<Array<{ x: number; y: number }>>([])
-  // Hold-to-switch: the right-stick curve kept in the Shift layer (profile 5).
-  const [shiftCurve, setShiftCurve] = useState<Array<{ x: number; y: number }> | null>(null)
-  const [shiftDirty, setShiftDirty] = useState(false)
+  // The normal profile (P1–P4) last opened, to come back to from the Shift layer.
+  const [normalSlot, setNormalSlot] = useState(1)
   const [splineModes, setSplineModes] = useState<Record<string, boolean>>({})
   const [ljCurveEditors, setLjCurveEditors] = useState<Record<string, CurveEditorDraft>>({})
   const splineKey = `${connPath}.${slot}.${which}`
@@ -3584,15 +3618,7 @@ export default function App(): JSX.Element {
       setSlot(s)
       setDirty(false)
       setLoadId((n) => n + 1)
-      setShiftDirty(false)
-      if (s !== SHIFT_PROFILE && ['G7ProCE', 'T3CE'].includes(modelId)) {
-        try {
-          const layer = parseProfile(b64ToBytes((await api().readProfile(SHIFT_PROFILE, len)).bytes), modelId)
-          setShiftCurve(stick.linearModule(layer.sticks[1]).en ? stick.curve(layer.sticks[1]) : null)
-        } catch {
-          setShiftCurve(null)
-        }
-      }
+      if (s !== SHIFT_PROFILE) setNormalSlot(s)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -3605,7 +3631,7 @@ export default function App(): JSX.Element {
     if (!blob) return
     if (profile && (outLock[0] || outLock[1]) && stick.lockStickOutput(profile.sticks, outLock)) syncBlob()
     try {
-      setReview([...(padBytes && padBytes.length === blob.length ? describeProfileChanges(padBytes, blob, modelId) : [{ key: 'review.full' }]), ...(shiftDirty ? [{ key: 'review.holdCurve' }] : [])])
+      setReview(padBytes && padBytes.length === blob.length ? describeProfileChanges(padBytes, blob, modelId) : [{ key: 'review.full' }])
     } catch {
       setReview([{ key: 'review.full' }])
     }
@@ -3628,13 +3654,6 @@ export default function App(): JSX.Element {
         const liveNow = info?.currentProfile
         setSavedAt({ slot, at: Date.now() })
         setDirty(false)
-        // Hold-to-switch: keep the Shift layer a copy of this profile with the held curve.
-        const held = profile && holdKeyOf(profile) ? shiftCurve ?? stick.curve(profile.sticks[1]) : null
-        if (HOLD_CURVE_READY && slot !== SHIFT_PROFILE && held && ['G7ProCE', 'T3CE'].includes(modelId)) {
-          const layer = await api().writeProfile(SHIFT_PROFILE, bytesToB64(buildShiftLayer(blob, modelId, sampleDesign(held, false))), modelLen)
-          if (layer.verified) setShiftDirty(false)
-          else setErr(t('hold.layerFailed'))
-        }
         // The Shift layer is never switched to: the pad uses it while the Shift button is held.
         if (liveNow !== undefined && liveNow !== slot && slot !== SHIFT_PROFILE) {
           // One step: apply by switching onto the written slot, then prove
@@ -4022,6 +4041,12 @@ export default function App(): JSX.Element {
               <KeyIcon value={9} size={17} />
               {t('nav.buttons')}
             </button>
+            {!isLj && (
+              <button type="button" className={`nav-item${tab === 'shift' ? ' active' : ''}`} onClick={() => setTab('shift')}>
+                <KeyIcon value={SHIFT_KEY} size={17} />
+                {t('nav.shift')}
+              </button>
+            )}
           </div>
           <details className="nav-more" open={['calibrate', 'profiles', 'lab', 'language', 'theme'].includes(tab)}>
             <summary>{t('nav.moreTools')}</summary>
@@ -4235,7 +4260,7 @@ export default function App(): JSX.Element {
           )}
           {isLj && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' ? 'none' : undefined }}>
+              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' || tab === 'shift' ? 'none' : undefined }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
                     <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
@@ -4331,7 +4356,7 @@ export default function App(): JSX.Element {
           )}
           {connected && profile && pkt && dz && fd && (
             <>
-              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' ? 'none' : undefined }}>
+              <div className="row stick-selector" style={{ gap: 8, marginBottom: 12, display: tab === 'buttons' || tab === 'shift' ? 'none' : undefined }}>
                 {(['Left', 'Right'] as const).map((n, i) => (
                   <button key={n} className={`choice-btn${i === which ? ' active' : ''}`} onClick={() => setWhich(i)}>
                     <span className="row stick-choice-label"><StickSideIcon side={n.toLowerCase() as 'left' | 'right'} /><KeyIcon value={i === 0 ? 7 : 8} size={16} /><span className="stick-click-badge">{i === 0 ? 'L3' : 'R3'}</span><span>{(n === 'Left' ? t('cal.left') : t('cal.right'))} {t('sticks.stick')}</span></span>
@@ -4590,20 +4615,6 @@ export default function App(): JSX.Element {
                     </section>
                     </div>
                   </div>
-                  {HOLD_CURVE_READY && slot !== SHIFT_PROFILE && ['G7ProCE', 'T3CE'].includes(modelId) && (
-                    <HoldCurveCard
-                      holdKey={holdKeyOf(profile)}
-                      disabled={busy || locked || calibrationRunning}
-                      normal={stick.curve(profile.sticks[1])}
-                      curve={shiftCurve ?? (holdKeyOf(profile) ? stick.curve(profile.sticks[1]) : null)}
-                      onHoldKey={(key) => {
-                        edit(() => setHoldKey(profile, key))
-                        if (key && !shiftCurve) setShiftCurve(stick.curve(profile.sticks[1]))
-                        if (key) setShiftDirty(true)
-                      }}
-                      onCurve={(pts) => { setShiftCurve(pts); setShiftDirty(true); setDirty(true) }}
-                    />
-                  )}
               </div>}
               {tab === 'device' && (
               <div className="two device-workspace" style={{ alignItems: 'start' }}>
@@ -4732,6 +4743,19 @@ export default function App(): JSX.Element {
             <p className="clean-profile-detail">{t('clean.limits')}</p>
             <div className="row wrap" style={{ gap: 10 }}><button type="button" className="btn" disabled={busy || locked || calibrationRunning} onClick={stageCleanProfile}>{t('clean.action')}</button>{freshUndo?.path === connPath && freshUndo?.slot === slot && freshUndo?.model === modelId && <button type="button" className="btn ghost" disabled={busy || calibrationRunning} onClick={undoCleanProfile}>{t('clean.undo')}</button>}</div>
           </section>}
+          {tab === 'shift' && connected && profile && !isLj && ['G7ProCE', 'T3CE'].includes(modelId) && (
+            <ShiftLayerPanel
+              editingLayer={slot === SHIFT_PROFILE}
+              normalSlot={normalSlot}
+              holdKey={holdKeyOf(profile)}
+              keepOriginal={(() => { const k = holdKeyOf(profile); return k ? holdKeepsOriginal(profile, k) : true })()}
+              disabled={busy || locked || calibrationRunning}
+              onHold={(key, keep) => edit(() => setHoldKey(profile, key, keep))}
+              onEditLayer={() => { if (!dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(SHIFT_PROFILE) }}
+              onBack={() => { if (!dirty || window.confirm(t('msg.discardSlot'))) void loadSlot(normalSlot) }}
+              onCopy={() => void copyIntoShift(normalSlot)}
+            />
+          )}
           {tab === 'buttons' && connected && profile && (
             <>
             <div className="buttons-workspace gamesir-buttons-workspace">
@@ -4788,7 +4812,10 @@ export default function App(): JSX.Element {
                 if (!pkt) return []
                 const values = button.mapValues(pkt)
                 const current = values.find(v => v !== 0) ?? 0
-                return [{ id: row.name, name: row.name, icon: <KeyIcon value={row.value} tag={row.tag} size={27} />, current, effective: displayMapping(values), outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: index >= STANDARD_BUTTONS.length, known: true, onPick: (v: number) => edit(() => button.setMap(pkt, [v, 0, 0])) }]
+                // Own key id for multi-bind: buttons 1–16, FL1/FR1 17/18, T3CE extras Ext1.. = 31.. (read from stock profiles).
+                const fk = profile.functionKeys.indexOf(pkt)
+                const selfValue = index < STANDARD_BUTTONS.length ? index + 1 : fk === 0 ? 17 : fk === 1 ? 18 : modelId === 'T3CE' && fk >= 2 ? 29 + fk : undefined
+                return [{ id: row.name, name: row.name, icon: <KeyIcon value={row.value} tag={row.tag} size={27} />, current, effective: displayMapping(values), outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: index >= STANDARD_BUTTONS.length, known: true, onPick: (v: number) => edit(() => button.setMap(pkt, [v, 0, 0])), slots: values, selfValue, onPickSlots: (vals: [number, number, number]) => edit(() => button.setMap(pkt, vals)) }]
               }).concat(
                 // L2/R2 carry their own mapping at trigger +11/+12 — where
                 // GameSir Connect stores "R2 → Shift" (proven on T3CE P1).
@@ -4796,7 +4823,7 @@ export default function App(): JSX.Element {
                   const values = trigger.mapValues(tp)
                   const current = trigger.mapped(tp) ? values.find(v => v !== 0) ?? 0 : 0
                   const name = i ? 'R2' : 'L2'
-                  return { id: name, name, icon: <KeyIcon value={19 + i} size={27} />, current, effective: current ? displayMapping(values) : '—', outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: false, known: true, onPick: (v: number) => edit(() => trigger.setMap(tp, [v, 0, 0])) }
+                  return { id: name, name, icon: <KeyIcon value={19 + i} size={27} />, current, effective: current ? displayMapping(values) : '—', outputIcon: current ? <KeyIcon value={current} size={28} /> : null, extra: false, known: true, onPick: (v: number) => edit(() => trigger.setMap(tp, [v, 0, 0])), slots: (trigger.mapped(tp) ? values : [0, 0, 0]) as [number, number, number], selfValue: 19 + i, onPickSlots: (vals: [number, number, number]) => edit(() => trigger.setMap(tp, vals)) }
                 })
               )}
             />

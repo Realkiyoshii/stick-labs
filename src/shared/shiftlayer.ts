@@ -10,7 +10,7 @@
  * value at +3; triggers keep map_en at +11 and the value at +12 — GameSir
  * Connect writes "R2 → Shift" as trigger +11 = 1, +12 = 231.
  */
-import { button, parseProfile, serializeProfile, stick, trigger, type Packet, type Profile } from './profile'
+import { button, fun, parseProfile, serializeProfile, stick, trigger, type Packet, type Profile } from './profile'
 import { SHIFT_KEY } from './keymap'
 
 export type HoldKey = 'L2' | 'R2' | 'L1' | 'R1' | 'L4' | 'R4'
@@ -28,8 +28,18 @@ function slotOf(p: Profile, key: HoldKey): { pkt: Packet | undefined; isTrigger:
   }
 }
 
-const isShift = (pkt: Packet, isTrigger: boolean): boolean =>
-  isTrigger ? trigger.mapped(pkt) && trigger.mapValues(pkt)[0] === SHIFT_KEY : button.mapValues(pkt)[0] === SHIFT_KEY
+/** Own key id of each hold key — output slot 1 when it keeps its normal job. */
+export const HOLD_KEY_SELF: Record<HoldKey, number> = { L1: 5, R1: 6, L4: 17, R4: 18, L2: 19, R2: 20 }
+
+const values = (pkt: Packet, isTrigger: boolean): number[] =>
+  isTrigger ? (trigger.mapped(pkt) ? trigger.mapValues(pkt) : []) : button.mapValues(pkt)
+const isShift = (pkt: Packet, isTrigger: boolean): boolean => values(pkt, isTrigger).includes(SHIFT_KEY)
+
+/** Whether the hold key also keeps its own output (multi-bind "L2 + Shift"). */
+export function holdKeepsOriginal(p: Profile, key: HoldKey): boolean {
+  const { pkt, isTrigger } = slotOf(p, key)
+  return !!pkt && values(pkt, isTrigger).includes(HOLD_KEY_SELF[key])
+}
 
 /** Which key (if any) activates the Shift layer in this profile. */
 export function holdKeyOf(p: Profile): HoldKey | null {
@@ -40,8 +50,12 @@ export function holdKeyOf(p: Profile): HoldKey | null {
   return null
 }
 
-/** Clear every Shift mapping (back to the key's own function), then set `key`. */
-export function setHoldKey(p: Profile, key: HoldKey | null): void {
+/**
+ * Clear every Shift mapping (back to the key's own function), then set `key`.
+ * With `keepOriginal`, the key is bound to its own output plus Shift (two
+ * output slots pressed together) so L2 still aims while it switches layers.
+ */
+export function setHoldKey(p: Profile, key: HoldKey | null, keepOriginal = false): void {
   const all = [
     ...p.buttons.map((pkt) => ({ pkt, isTrigger: false })),
     ...p.functionKeys.map((pkt) => ({ pkt, isTrigger: false })),
@@ -52,11 +66,21 @@ export function setHoldKey(p: Profile, key: HoldKey | null): void {
     if (isTrigger) trigger.setMap(pkt, [0, 0, 0])
     else button.setMap(pkt, [0, 0, 0])
   }
-  if (!key) return
+  // Fun_Data shift_en with shift_value 0 (value 1 is Connect's left stick ↔ D-pad
+  // swap, left alone). Set alongside the Shift key; untested whether required.
+  if (!key) {
+    if (fun.extend.shiftEnable(p.funData) && fun.extend.shiftValue(p.funData) === 0) fun.extend.setShiftEnable(p.funData, false)
+    return
+  }
+  if (!(fun.extend.shiftEnable(p.funData) && fun.extend.shiftValue(p.funData) === 1)) {
+    fun.extend.setShiftEnable(p.funData, true)
+    fun.extend.setShiftValue(p.funData, 0)
+  }
   const { pkt, isTrigger } = slotOf(p, key)
   if (!pkt) return
-  if (isTrigger) trigger.setMap(pkt, [SHIFT_KEY, 0, 0])
-  else button.setMap(pkt, [SHIFT_KEY, 0, 0])
+  const map: [number, number, number] = keepOriginal ? [HOLD_KEY_SELF[key], SHIFT_KEY, 0] : [SHIFT_KEY, 0, 0]
+  if (isTrigger) trigger.setMap(pkt, map)
+  else button.setMap(pkt, map)
 }
 
 /**

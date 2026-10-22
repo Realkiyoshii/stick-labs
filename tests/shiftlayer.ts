@@ -1,6 +1,6 @@
 // Hold-to-switch curve: Shift key mapping on buttons/triggers and the Shift layer build.
 import { readFileSync } from 'node:fs'
-import { buildShiftLayer, holdKeyOf, HOLD_KEYS, setHoldKey } from '../src/shared/shiftlayer'
+import { buildShiftLayer, holdKeepsOriginal, holdKeyOf, HOLD_KEYS, setHoldKey } from '../src/shared/shiftlayer'
 import { button, parseProfile, serializeProfile, stick, trigger } from '../src/shared/profile'
 
 function check(name: string, pass: boolean): void {
@@ -18,7 +18,7 @@ for (const model of ['G7ProCE', 'T3CE']) {
   const r2 = serializeProfile(p)
   const geo = model === 'T3CE' ? 0x6a1 : 0x354
   check(`${model}: R2 → Shift writes trigger +11/+12 like Connect`, r2[geo + 32 + 11] === 1 && r2[geo + 32 + 12] === 231 && holdKeyOf(parseProfile(r2, model)) === 'R2')
-  check(`${model}: R2 touches only its map bytes`, changed(base, r2).every((o) => o >= geo + 32 + 11 && o <= geo + 32 + 14))
+  check(`${model}: R2 touches only its map bytes and shift_en`, changed(base, r2).every((o) => (o >= geo + 32 + 11 && o <= geo + 32 + 14) || o === 0x20 + 9) && r2[0x20 + 9] === 1)
 
   for (const key of HOLD_KEYS) {
     const q = parseProfile(r2, model)
@@ -26,6 +26,13 @@ for (const model of ['G7ProCE', 'T3CE']) {
     const shiftCount = [...q.buttons, ...q.functionKeys].filter((b) => button.mapValues(b)[0] === 231).length + q.triggers.filter((t) => trigger.mapped(t) && trigger.mapValues(t)[0] === 231).length
     check(`${model}: switching to ${key} leaves exactly one Shift key`, holdKeyOf(q) === key && shiftCount === 1)
   }
+
+  const keep = parseProfile(base, model)
+  setHoldKey(keep, 'L2', true)
+  const kb = serializeProfile(keep)
+  check(`${model}: L2 + Shift keeps L2 (19) and adds Shift (231)`, kb[geo + 11] === 1 && kb[geo + 12] === 19 && kb[geo + 13] === 231 && holdKeyOf(keep) === 'L2' && holdKeepsOriginal(keep, 'L2'))
+  setHoldKey(keep, null)
+  check(`${model}: clearing L2 + Shift restores the original bytes`, changed(base, serializeProfile(keep)).length === 0)
 
   const off = parseProfile(r2, model)
   setHoldKey(off, null)
