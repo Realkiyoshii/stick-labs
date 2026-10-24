@@ -18,6 +18,7 @@
 import { REPORT_LENGTH, REPORT_INPUT, REPORT_RESPONSE, VENDOR_ID, VENDOR_USAGE, VENDOR_USAGE_PAGE } from '@shared/protocol'
 import type { Candidate } from '../renderer/api'
 import type { LjPort } from '@shared/leadjoy-session'
+import { HS_IDENTITIES, HS_USAGE, HS_USAGE_PAGE, type HsPort } from '@shared/hyperstrike'
 
 // --- minimal WebHID typings (lib.dom ships none) ----------------------------
 interface HidInputReportEvent extends Event {
@@ -29,6 +30,7 @@ interface HidDeviceLike {
   productId: number
   productName?: string
   manufacturerName?: string
+  collections?: Array<{ usagePage?: number; usage?: number }>
   opened: boolean
   open(): Promise<void>
   close(): Promise<void>
@@ -48,11 +50,25 @@ function hidApi(): HidLike | null {
   return nav.hid ?? null
 }
 
-/** The vendor config interfaces this app drives: GameSir 0xFFF0/0x40, LeadJoy 0xFF80/0x01. */
+/**
+ * The vendor config interfaces this app drives: GameSir 0xFFF0/0x40, LeadJoy
+ * 0xFF80/0x01, and the HyperStrike Driver interface 0xFF60/0x61 under each of
+ * its USB-mode identities (XInput, DS4, Switch, PS4).
+ */
 export const WEB_HID_FILTERS = [
   { vendorId: VENDOR_ID, usagePage: VENDOR_USAGE_PAGE, usage: VENDOR_USAGE },
-  { vendorId: 0x4131, usagePage: 0xff80, usage: 0x01 }
+  { vendorId: 0x4131, usagePage: 0xff80, usage: 0x01 },
+  ...HS_IDENTITIES.map((i) => ({ vendorId: i.vendorId, productId: i.productId, usagePage: HS_USAGE_PAGE, usage: HS_USAGE }))
 ]
+
+/** A granted device is the HyperStrike Driver interface (any USB mode). */
+function isHyperStrike(device: HidDeviceLike): boolean {
+  return HS_IDENTITIES.some((i) => i.vendorId === device.vendorId && i.productId === device.productId) &&
+    (device.collections ?? []).some((c) => c.usagePage === HS_USAGE_PAGE && c.usage === HS_USAGE)
+}
+
+/** Only GameSir pads may be handed to the GameSir session (connect / auto-reconnect). */
+export const isGameSirPath = (path: string): boolean => path.startsWith(`webhid:${VENDOR_ID.toString(16)}:`)
 
 const registry = new Map<string, HidDeviceLike>()
 let pathSeq = 0
@@ -71,7 +87,8 @@ function toCandidate(device: HidDeviceLike, path: string): Candidate {
     // The user chose this device in the picker, so it is wanted as much as any
     // other granted pad — auto-reconnect may take the first one it finds.
     preferred: true,
-    product: device.productName,
+    // In DS4/Switch/PS4 mode the HyperStrike borrows those pads' names; label it by its Driver interface.
+    product: isHyperStrike(device) ? 'HyperStrike' : device.productName,
     manufacturer: device.manufacturerName,
     live: null
   }
@@ -88,9 +105,13 @@ export async function discoverWeb(): Promise<Candidate[]> {
     throw new Error('WebHID is unavailable — use Chrome or Edge, over https:// or localhost')
   }
   let devices = await hid.getDevices()
-  if (devices.length === 0) {
+  // Inside a click (Rescan) also offer the picker, so a second pad — or the
+  // HyperStrike under a new USB-mode identity — can be granted next to the first.
+  const gesture = (navigator as unknown as { userActivation?: { isActive: boolean } }).userActivation?.isActive === true
+  if (devices.length === 0 || gesture) {
     try {
-      devices = await hid.requestDevice({ filters: WEB_HID_FILTERS })
+      const picked = await hid.requestDevice({ filters: WEB_HID_FILTERS })
+      devices = [...devices, ...picked.filter((d) => !devices.includes(d))]
     } catch {
       /* no user gesture — the Rescan button retries with one */
     }
@@ -103,12 +124,23 @@ export async function discoverWeb(): Promise<Candidate[]> {
  * unnumbered 64-byte reports (report id 0), queued input, open per session.
  */
 export async function openLjPort(path: string): Promise<LjPort> {
+  return openQueuedPort(path, 'leadjoy', 'the LeadJoy app')
+}
+
+/** HyperStrike Driver interface over WebHID: same unnumbered 64-byte frames as node-hid. */
+export async function openHsPort(path: string): Promise<HsPort> {
   const device = registry.get(path)
-  if (!device) throw new Error('leadjoy: device is no longer granted — pick it again in the browser prompt')
+  if (device && !isHyperStrike(device)) throw new Error('hyperstrike: not a HyperStrike Driver interface')
+  return openQueuedPort(path, 'hyperstrike', 'HyperStrike Hub')
+}
+
+async function openQueuedPort(path: string, tag: string, vendorApp: string): Promise<LjPort & HsPort> {
+  const device = registry.get(path)
+  if (!device) throw new Error(`${tag}: device is no longer granted — pick it again in the browser prompt`)
   try {
     if (!device.opened) await device.open()
   } catch (err) {
-    throw new Error(`leadjoy: cannot open device (close the LeadJoy app first) — ${(err as Error).message}`)
+    throw new Error(`${tag}: cannot open device (close ${vendorApp} first) — ${(err as Error).message}`)
   }
   const queue: number[][] = []
   let waiter: ((bytes: number[] | null) => void) | null = null

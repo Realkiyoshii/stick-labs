@@ -11,17 +11,22 @@
  *   - steamInfo/steamExport/steamGames/steamExportAll (Steam config folders)
  *   - deeppoll (kernel ETW trace)
  *   - ping (desktop round-trip harness)
- * LeadJoy runs the same session as the desktop (shared/leadjoy-session.ts)
- * over a WebHID port.
+ * LeadJoy and HyperStrike run the same sessions as the desktop
+ * (shared/leadjoy-session.ts, shared/hyperstrike.ts) over WebHID ports.
+ * A HyperStrike that re-plugs under a new USB-mode identity (DS4/Switch/PS4)
+ * must be granted again with Rescan; the browser can't do that unprompted.
  */
 import { Controller } from '../main/controller'
 import type { DeepPollResult } from '@shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '@shared/leadjoy'
 import type { LabApi, LiveSample } from '../renderer/api'
-import { WebHidTransport, discoverWeb, openLjPort } from './hid'
+import { WebHidTransport, discoverWeb, isGameSirPath, openHsPort, openLjPort } from './hid'
 import { createLjApi, createLjSession } from '@shared/leadjoy-session'
+import { createHsSession, type HsCalStep, type HsCalType, type HsEdit } from '@shared/hyperstrike'
 
 const leadjoyApi = createLjApi(createLjSession(openLjPort))
+// Same HyperStrike session as the desktop (shared/hyperstrike.ts) over a WebHID port.
+const hyperstrike = createHsSession(openHsPort)
 
 /** Injected by vite.web.config.ts from package.json. */
 declare const __APP_VERSION__: string
@@ -97,7 +102,8 @@ async function autoReconnect(reason: string): Promise<void> {
       if (epoch !== sessionEpoch || transport.isOpen) return
       await sleepMs(800)
       if (epoch !== sessionEpoch || transport.isOpen) return
-      const cands = await discoverWeb().catch(() => [])
+      // Only GameSir pads: the GameSir handshake must never reach another vendor's device.
+      const cands = (await discoverWeb().catch(() => [])).filter((c) => isGameSirPath(c.path))
       const target = cands.find((c) => c.preferred) ?? cands[0]
       if (!target) continue
       await sleepMs(600)
@@ -130,7 +136,7 @@ const NOT_IN_BROWSER =
 const basis = {
   discover: async () => {
     const found = await discoverWeb()
-    knownPaths = found
+    knownPaths = found.filter((c) => isGameSirPath(c.path))
     return found
   },
   connect: async (path: string) => {
@@ -172,13 +178,13 @@ const basis = {
   steamExportAll: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   ping: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   deeppoll: () => Promise.reject(new Error(NOT_IN_BROWSER)) as Promise<DeepPollResult>,
-  hyperstrikeRead: () => Promise.reject(new Error(NOT_IN_BROWSER)),
-  hyperstrikeWrite: () => Promise.reject(new Error(NOT_IN_BROWSER)),
-  hyperstrikeSwitch: () => Promise.reject(new Error(NOT_IN_BROWSER)),
-  hyperstrikeCalibrate: () => Promise.reject(new Error(NOT_IN_BROWSER)),
-  hyperstrikeCalibrateCenter: () => Promise.reject(new Error(NOT_IN_BROWSER)),
-  hyperstrikeFineTuneRead: () => Promise.reject(new Error(NOT_IN_BROWSER)),
-  hyperstrikeFineTuneWrite: () => Promise.reject(new Error(NOT_IN_BROWSER)),
+  hyperstrikeRead: (path: string) => hyperstrike.readSnapshot(path),
+  hyperstrikeWrite: (path: string, edit: HsEdit) => hyperstrike.writeVerified(path, edit),
+  hyperstrikeSwitch: (path: string, index: number) => hyperstrike.switchProfile(path, index),
+  hyperstrikeCalibrate: (path: string, step: HsCalStep, type: HsCalType) => hyperstrike.calibrate(path, step, type),
+  hyperstrikeCalibrateCenter: (path: string) => hyperstrike.calibrateCenterAuto(path),
+  hyperstrikeFineTuneRead: (path: string) => hyperstrike.readFineTune(path),
+  hyperstrikeFineTuneWrite: (path: string, values: number[]) => hyperstrike.writeFineTune(path, values),
   leadjoyReadMain: (path: string) => leadjoyApi.readMain(path),
   leadjoyReadSlot: (req: { path: string; slot: number }) => leadjoyApi.readSlot(req),
   leadjoyWriteButton: (req: { path: string; slot: number; id: number; target: LjButtonTarget | null }) => leadjoyApi.writeButton(req),
