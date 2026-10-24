@@ -1,0 +1,227 @@
+/* ---------------------------------------------------------------------------
+   Cyberpunk 2077 skin — the "cyberpunk" theme in theme.ts sets data-skin on <html>.
+   Night City HUD: black glass over a cyan grid, scanlines rolling, a glitch
+   band that tears across now and then, yellow notched panels, RGB-split
+   titles, and buttons that glitch-shake when touched. Built in CSS only.
+   --------------------------------------------------------------------------- */
+
+[data-skin='cyberpunk'] {
+  --cy-yellow: #fcee0a;
+  --cy-cyan: #00f0ff;
+  --cy-red: #ff003c;
+  --cy-black: #050508;
+  --cy-cut: 14px;
+  --soft-line: rgba(252, 238, 10, 0.3);
+  --cy-font: 'Bahnschrift', 'Rajdhani', 'Segoe UI', sans-serif;
+  --cy-notch: polygon(0 0, calc(100% - var(--cy-cut)) 0, 100% var(--cy-cut), 100% 100%, var(--cy-cut) 100%, 0 calc(100% - var(--cy-cut)));
+  --cy-notch-sm: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  font-family: var(--cy-font);
+}
+
+/* City grid, scanlines, and a glitch band that tears through every few seconds. */
+[data-skin='cyberpunk'] body {
+  background:
+    radial-gradient(ellipse 70% 50% at 85% 110%, rgba(255, 0, 60, 0.18), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 0% 0%, rgba(0, 240, 255, 0.1), transparent 70%),
+    linear-gradient(rgba(0, 240, 255, 0.045) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, rgba(0, 240, 255, 0.045) 1px, transparent 1px) 0 0 / 44px 44px,
+    var(--cy-black);
+  background-attachment: fixed;
+}
+[data-skin='cyberpunk'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 3px);
+  animation: cy-roll 6s linear infinite;
+}
+[data-skin='cyberpunk'] body::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 5vh;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(90deg, transparent 0 8%, rgba(0, 240, 255, 0.35) 8% 22%, transparent 22% 47%, rgba(255, 0, 60, 0.3) 47% 63%, transparent 63% 80%, rgba(252, 238, 10, 0.25) 80% 88%, transparent 88%);
+  mix-blend-mode: screen;
+  animation: cy-tear 7.5s steps(1) infinite;
+}
+@keyframes cy-roll { to { background-position: 0 30px; } }
+@keyframes cy-tear {
+  0%, 91%, 100% { opacity: 0; top: 30%; }
+  92% { opacity: 1; top: 22%; transform: translateX(-12px); }
+  93% { opacity: 0.8; top: 61%; transform: translateX(18px) scaleY(0.4); }
+  94% { opacity: 1; top: 40%; transform: translateX(-6px) scaleY(0.2); }
+  95% { opacity: 0; }
+}
+[data-skin='cyberpunk'] .app { position: relative; z-index: 1; }
+[data-skin='cyberpunk'] .app,
+[data-skin='cyberpunk'] .main,
+[data-skin='cyberpunk'] .content { background: transparent; }
+
+[data-skin='cyberpunk'] ::selection { background: var(--cy-yellow); color: var(--cy-black); }
+[data-skin='cyberpunk'] ::-webkit-scrollbar { width: 6px; height: 6px; }
+[data-skin='cyberpunk'] ::-webkit-scrollbar-track { background: rgba(252, 238, 10, 0.05); }
+[data-skin='cyberpunk'] ::-webkit-scrollbar-thumb { background: var(--cy-yellow); }
+
+/* Type: tight uppercase; titles flicker with an RGB split. */
+[data-skin='cyberpunk'] h1,
+[data-skin='cyberpunk'] h2,
+[data-skin='cyberpunk'] h3 { font-family: var(--cy-font); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+[data-skin='cyberpunk'] .tuning-page-heading h2 { color: var(--cy-yellow); font-size: 30px; animation: cy-split 4.2s steps(1) infinite; }
+[data-skin='cyberpunk'] .tuning-page-heading h2::before { content: '// '; color: var(--cy-red); }
+[data-skin='cyberpunk'] .tuning-page-heading p { color: var(--cy-cyan); font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; letter-spacing: 0.04em; }
+[data-skin='cyberpunk'] .tuning-page-heading p::before { content: '> '; color: var(--cy-yellow); }
+@keyframes cy-split {
+  0%, 100% { text-shadow: 2px 0 rgba(255, 0, 60, 0.7), -2px 0 rgba(0, 240, 255, 0.7); transform: none; }
+  46% { text-shadow: 5px 0 var(--cy-red), -5px 0 var(--cy-cyan); transform: translateX(2px) skewX(-6deg); }
+  48% { text-shadow: -4px 0 var(--cy-red), 4px 0 var(--cy-cyan); transform: translateX(-3px); }
+  50% { text-shadow: 2px 0 rgba(255, 0, 60, 0.7), -2px 0 rgba(0, 240, 255, 0.7); transform: none; }
+}
+[data-skin='cyberpunk'] .card > h3 { border-left: 3px solid var(--cy-yellow); padding-left: 10px; color: var(--cy-yellow); }
+[data-skin='cyberpunk'] .supported-pads h3 { color: var(--cy-yellow); }
+[data-skin='cyberpunk'] .supported-pads h3::before { content: '[ '; color: var(--cy-cyan); }
+[data-skin='cyberpunk'] .supported-pads h3::after { content: ' ]'; color: var(--cy-cyan); }
+
+/* Sidebar and top bar: black glass ruled in yellow, with a hazard strip. */
+[data-skin='cyberpunk'] .sidebar { background: rgba(5, 5, 8, 0.9); border-right: 1px solid rgba(252, 238, 10, 0.35); box-shadow: inset -1px 0 0 rgba(0, 240, 255, 0.15); }
+[data-skin='cyberpunk'] .brand h1 { color: var(--cy-yellow); letter-spacing: 0.14em; text-shadow: 2px 0 rgba(255, 0, 60, 0.6), -2px 0 rgba(0, 240, 255, 0.6); }
+[data-skin='cyberpunk'] .brand h1 span { color: var(--cy-cyan); }
+[data-skin='cyberpunk'] .brand-mark { color: var(--cy-yellow); }
+[data-skin='cyberpunk'] .topbar {
+  background:
+    repeating-linear-gradient(-45deg, var(--cy-yellow) 0 8px, var(--cy-black) 8px 16px) bottom right / 180px 4px no-repeat,
+    rgba(5, 5, 8, 0.88);
+  border-bottom: 1px solid var(--cy-yellow);
+}
+[data-skin='cyberpunk'] .topbar h2 { color: var(--cy-yellow); letter-spacing: 0.2em; }
+[data-skin='cyberpunk'] .topbar h2::after { content: '_'; color: var(--cy-cyan); animation: cy-blink 1s steps(1) infinite; }
+@keyframes cy-blink { 50% { opacity: 0; } }
+[data-skin='cyberpunk'] .status-bar { background: transparent; border-top: 1px solid rgba(252, 238, 10, 0.25); }
+
+/* Menu: the picked item sits on a notched yellow slab; hover sends it cyan. */
+[data-skin='cyberpunk'] .nav-mark { border-radius: 0; background: var(--cy-yellow); box-shadow: none; clip-path: var(--cy-notch-sm); filter: drop-shadow(3px 0 0 var(--cy-red)); }
+[data-skin='cyberpunk'] .nav-item { border-radius: 0; color: rgba(232, 240, 242, 0.75); text-transform: uppercase; letter-spacing: 0.1em; font-size: 12.5px; font-weight: 600; transition: color 0.12s, transform 0.12s; }
+[data-skin='cyberpunk'] .nav-item:hover { background: transparent; color: var(--cy-cyan); transform: translateX(4px); text-shadow: 0 0 8px rgba(0, 240, 255, 0.6); }
+[data-skin='cyberpunk'] .nav-item.active,
+[data-skin='cyberpunk'] .nav-item.active .nav-icon { color: var(--cy-black); text-shadow: none; transform: none; }
+[data-skin='cyberpunk'] .nav-item.active { animation: cy-flick 0.35s steps(2) 1; }
+@keyframes cy-flick { 0% { opacity: 0.2; } 50% { opacity: 1; transform: translateX(3px); } 75% { opacity: 0.5; } }
+[data-skin='cyberpunk'] .nav-group-label,
+[data-skin='cyberpunk'] .nav-more summary { color: var(--cy-red); letter-spacing: 0.22em; }
+
+/* Panels: notched black glass, a yellow tab on top, cut corner traced in yellow. */
+[data-skin='cyberpunk'] .card,
+[data-skin='cyberpunk'] .msg,
+[data-skin='cyberpunk'] .overview-tile,
+[data-skin='cyberpunk'] .supported-pad,
+[data-skin='cyberpunk'] .pad-request,
+[data-skin='cyberpunk'] .saved-curve-card,
+[data-skin='cyberpunk'] .stick-card,
+[data-skin='cyberpunk'] .connect-drop-card,
+[data-skin='cyberpunk'] .review-dialog {
+  border: 1px solid rgba(252, 238, 10, 0.28);
+  border-radius: 0;
+  clip-path: var(--cy-notch);
+  background:
+    linear-gradient(var(--cy-yellow), var(--cy-yellow)) top left / 46px 3px no-repeat,
+    linear-gradient(225deg, transparent calc(var(--cy-cut) - 1px), var(--cy-yellow) calc(var(--cy-cut) - 1px) calc(var(--cy-cut) + 0.5px), transparent calc(var(--cy-cut) + 1px)) top right / calc(var(--cy-cut) * 2) calc(var(--cy-cut) * 2) no-repeat,
+    linear-gradient(45deg, transparent calc(var(--cy-cut) - 1px), var(--cy-yellow) calc(var(--cy-cut) - 1px) calc(var(--cy-cut) + 0.5px), transparent calc(var(--cy-cut) + 1px)) bottom left / calc(var(--cy-cut) * 2) calc(var(--cy-cut) * 2) no-repeat,
+    linear-gradient(180deg, rgba(18, 18, 26, 0.92), rgba(8, 8, 12, 0.94));
+  box-shadow: none;
+}
+[data-skin='cyberpunk'] .overview-tile,
+[data-skin='cyberpunk'] .supported-pad { transition: transform 0.15s, border-color 0.15s, filter 0.15s; }
+[data-skin='cyberpunk'] .overview-tile:hover,
+[data-skin='cyberpunk'] .supported-pad:hover { border-color: var(--cy-cyan); transform: translateY(-3px); filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.35)); animation: cy-jitter 0.3s steps(3) 1; }
+@keyframes cy-jitter { 33% { transform: translate(-3px, -3px); } 66% { transform: translate(2px, -2px) skewX(-3deg); } }
+[data-skin='cyberpunk'] .overview-tile-icon { border-radius: 0; background: rgba(0, 240, 255, 0.1); color: var(--cy-cyan); border: 1px solid rgba(0, 240, 255, 0.5); clip-path: var(--cy-notch-sm); }
+[data-skin='cyberpunk'] .overview-tile-label,
+[data-skin='cyberpunk'] .stick-eyebrow { color: var(--cy-cyan); text-transform: uppercase; letter-spacing: 0.12em; font-family: Consolas, 'Cascadia Mono', monospace; font-size: 11px; }
+[data-skin='cyberpunk'] .overview-tile-value { color: var(--cy-yellow); }
+[data-skin='cyberpunk'] .supported-pad span { text-transform: uppercase; letter-spacing: 0.1em; color: var(--cy-yellow); }
+[data-skin='cyberpunk'] .connect-drop-eyebrow { color: var(--cy-cyan); }
+
+/* Controls: notched outlines; hover fills yellow and glitch-shakes. */
+[data-skin='cyberpunk'] .btn,
+[data-skin='cyberpunk'] .choice-btn,
+[data-skin='cyberpunk'] .creator-link,
+[data-skin='cyberpunk'] .remap-filter button,
+[data-skin='cyberpunk'] .remap-capture-choice,
+[data-skin='cyberpunk'] .dz-chip {
+  border-radius: 0;
+  border: 1px solid var(--cy-yellow);
+  background: rgba(252, 238, 10, 0.04);
+  color: var(--cy-yellow);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  clip-path: var(--cy-notch-sm);
+  transition: background 0.1s, color 0.1s;
+}
+[data-skin='cyberpunk'] .btn:hover:not(:disabled),
+[data-skin='cyberpunk'] .choice-btn:hover:not(:disabled),
+[data-skin='cyberpunk'] .creator-link:hover,
+[data-skin='cyberpunk'] .remap-filter button:hover,
+[data-skin='cyberpunk'] .remap-capture-choice:hover:not(:disabled),
+[data-skin='cyberpunk'] .dz-chip:hover:not(:disabled) { background: var(--cy-yellow); color: var(--cy-black); animation: cy-shake 0.28s steps(4) 1; }
+@keyframes cy-shake { 25% { transform: translateX(-2px); box-shadow: 3px 0 var(--cy-red); } 50% { transform: translateX(2px); box-shadow: -3px 0 var(--cy-cyan); } 75% { transform: translateX(-1px); } }
+[data-skin='cyberpunk'] .choice-btn.active,
+[data-skin='cyberpunk'] .remap-filter button.active,
+[data-skin='cyberpunk'] .remap-source.selected,
+[data-skin='cyberpunk'] .dz-chip.active { background: var(--cy-yellow); color: var(--cy-black); }
+[data-skin='cyberpunk'] .choice-btn.active * { color: var(--cy-black); }
+[data-skin='cyberpunk'] .creator-youtube svg,
+[data-skin='cyberpunk'] .creator-coffee svg { color: currentColor; }
+[data-skin='cyberpunk'] .topbar-links .creator-coffee { background: var(--cy-red); border-color: var(--cy-red); color: #fff; }
+[data-skin='cyberpunk'] .connect-drop-actions .btn.primary { background: var(--cy-yellow); border-color: var(--cy-yellow); color: var(--cy-black); }
+[data-skin='cyberpunk'] .sidebar .btn { font-size: 10.5px; letter-spacing: 0.04em; }
+
+[data-skin='cyberpunk'] .stick-card.active { border-color: var(--cy-yellow); background: linear-gradient(90deg, rgba(252, 238, 10, 0.16), rgba(8, 8, 12, 0.94)); }
+[data-skin='cyberpunk'] .stick-card.active .stick-card-icon .stick-cap { fill: var(--cy-yellow); stroke: var(--cy-yellow); }
+[data-skin='cyberpunk'] .stick-card.active .stick-card-icon .stick-letter { fill: var(--cy-black); }
+
+[data-skin='cyberpunk'] .pill,
+[data-skin='cyberpunk'] .key-chip { border-radius: 0; border: 1px solid var(--cy-cyan); background: rgba(0, 240, 255, 0.08); color: var(--cy-cyan); font-family: Consolas, 'Cascadia Mono', monospace; }
+[data-skin='cyberpunk'] .input,
+[data-skin='cyberpunk'] input,
+[data-skin='cyberpunk'] select,
+[data-skin='cyberpunk'] textarea { border-radius: 0; border: 1px solid rgba(0, 240, 255, 0.5); background: rgba(0, 240, 255, 0.04); color: var(--cy-cyan); }
+[data-skin='cyberpunk'] .dz-value { border-radius: 0; border-color: var(--cy-cyan); }
+[data-skin='cyberpunk'] .dz-input input { color: var(--cy-yellow); font-family: Consolas, 'Cascadia Mono', monospace; }
+
+/* Controller photos: chromatic split, and a glitch on hover. */
+[data-skin='cyberpunk'] .controller-photo::before { background: radial-gradient(closest-side, rgba(0, 240, 255, 0.18), transparent); }
+[data-skin='cyberpunk'] .controller-photo img { filter: drop-shadow(-3px 0 0 rgba(0, 240, 255, 0.55)) drop-shadow(3px 0 0 rgba(255, 0, 60, 0.55)); }
+[data-skin='cyberpunk'] .supported-pad:hover .controller-photo img { animation: cy-img 0.45s steps(3) 1; }
+@keyframes cy-img { 33% { transform: translateX(-4px); clip-path: inset(10% 0 40% 0); } 66% { transform: translateX(3px); clip-path: inset(50% 0 5% 0); } }
+
+/* Page change: the new page glitches in, slice by slice. */
+[data-skin='cyberpunk'] .page-enter { animation: cy-in 0.38s steps(1) both; }
+@keyframes cy-in {
+  0% { opacity: 0; clip-path: inset(0 0 100% 0); }
+  20% { opacity: 1; clip-path: inset(0 0 70% 0); transform: translateX(-10px); }
+  40% { clip-path: inset(30% 0 30% 0); transform: translateX(8px); }
+  60% { clip-path: inset(60% 0 0 0); transform: translateX(-4px); }
+  80% { clip-path: inset(0 0 0 0); transform: translateX(2px); }
+  100% { clip-path: none; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skin='cyberpunk'] body::before,
+  [data-skin='cyberpunk'] body::after,
+  [data-skin='cyberpunk'] .tuning-page-heading h2,
+  [data-skin='cyberpunk'] .page-enter,
+  [data-skin='cyberpunk'] .topbar h2::after { animation: none; }
+}
+
+/* Panels that can hold pop-up lists keep square edges, so nothing inside gets clipped. */
+[data-skin='cyberpunk'] .card,
+[data-skin='cyberpunk'] .msg,
+[data-skin='cyberpunk'] .pad-request,
+[data-skin='cyberpunk'] .saved-curve-card,
+[data-skin='cyberpunk'] .review-dialog { clip-path: none; }

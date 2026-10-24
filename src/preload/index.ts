@@ -29,6 +29,7 @@ const api = {
   setStickCenter: (stick: number, direction: number) => call<boolean>('device:stickCenter', stick, direction),
   openExternal: (url: string) => call<boolean>('system:openExternal', url),
   version: () => call<string>('system:version'),
+  youtubeLive: () => call<{ live: boolean; url: string | null }>('system:youtubeLive'),
   setUnsaved: (state: { dirty: boolean; hide?: { message: string; detail: string; confirm: string; cancel: string }; quit?: { message: string; detail: string; confirm: string; cancel: string } }) =>
     call<boolean>('system:setUnsaved', state),
   updateStatus: () =>

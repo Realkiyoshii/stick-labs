@@ -1,0 +1,156 @@
+/* ---------------------------------------------------------------------------
+   NieR:Automata skin — the "automata" theme in theme.ts sets data-skin on <html>.
+   Sepia paper, ink-brown type, square corners, offset drop shadows, corner
+   brackets, inverted menu bars and a faint scanline texture over everything.
+   Colours come from the theme's variables; this file only reshapes.
+   --------------------------------------------------------------------------- */
+
+[data-skin='automata'] {
+  --ink: #4e4b42;
+  --paper: #dad4bb;
+  --ink-soft: rgba(78, 75, 66, 0.45);
+  --ink-faint: rgba(78, 75, 66, 0.16);
+  --soft-line: rgba(78, 75, 66, 0.4);
+  --a-shadow: 5px 5px 0 rgba(78, 75, 66, 0.2);
+  color-scheme: light;
+  font-family: 'Segoe UI', 'Noto Sans JP', 'Yu Gothic UI', system-ui, sans-serif;
+  letter-spacing: 0.03em;
+}
+
+/* Paper: fine horizontal lines, a soft vignette, and a slow scan band. */
+[data-skin='automata'] body {
+  background-color: var(--bg);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(78, 75, 66, 0.045) 0 1px, transparent 1px 4px),
+    radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(78, 75, 66, 0.2));
+  background-attachment: fixed;
+}
+[data-skin='automata'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 252, 235, 0.16) 48%, rgba(78, 75, 66, 0.05) 50%, transparent 52%);
+  background-size: 100% 300%;
+  animation: automata-scan 9s linear infinite;
+  mix-blend-mode: multiply;
+}
+@keyframes automata-scan { from { background-position: 0 100%; } to { background-position: 0 -200%; } }
+
+[data-skin='automata'] ::selection { background: var(--ink); color: var(--paper); }
+[data-skin='automata'] ::-webkit-scrollbar { width: 8px; height: 8px; }
+[data-skin='automata'] ::-webkit-scrollbar-track { background: transparent; }
+[data-skin='automata'] ::-webkit-scrollbar-thumb { background: var(--ink-soft); border-radius: 0; }
+[data-skin='automata'] ::-webkit-scrollbar-thumb:hover { background: var(--ink); }
+
+/* Type: spaced capitals for titles, a square bullet before section heads. */
+[data-skin='automata'] h1,
+[data-skin='automata'] h2,
+[data-skin='automata'] h3 { color: var(--ink); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 500; }
+[data-skin='automata'] .tuning-page-heading h2 { padding-bottom: 10px; border-bottom: 1px solid var(--ink-soft); box-shadow: 0 3px 0 -2px var(--ink-faint); }
+[data-skin='automata'] .card h3::before,
+[data-skin='automata'] .supported-pads h3::before { content: ''; display: inline-block; width: 8px; height: 8px; margin: 0 10px 1px 0; background: var(--ink); vertical-align: middle; }
+
+/* Sidebar and top bar: paper panels ruled with double lines. */
+[data-skin='automata'] .sidebar { background: rgba(211, 205, 181, 0.92); border-right: 3px double var(--ink-soft); }
+[data-skin='automata'] .brand h1,
+[data-skin='automata'] .brand h1 span { color: var(--ink); letter-spacing: 0.22em; }
+[data-skin='automata'] .brand-mark { color: var(--ink); }
+[data-skin='automata'] .topbar { background: rgba(218, 212, 187, 0.85); border-bottom: 3px double var(--ink-soft); }
+[data-skin='automata'] .topbar h2 { letter-spacing: 0.3em; font-size: 15px; }
+[data-skin='automata'] .status-bar { border-top: 3px double var(--ink-soft); }
+
+/* Menu: the gliding highlight becomes the solid ink bar, text flips to paper. */
+[data-skin='automata'] .nav-mark { background: var(--ink); border-radius: 0; box-shadow: var(--a-shadow); }
+[data-skin='automata'] .nav-item { border-radius: 0; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.1em; font-size: 12px; }
+[data-skin='automata'] .nav-item::before { content: ''; width: 6px; height: 6px; flex: 0 0 auto; margin-right: 2px; background: currentColor; opacity: 0.35; }
+[data-skin='automata'] .nav-item:hover { background: var(--ink-faint); color: var(--ink); }
+[data-skin='automata'] .nav-item.active,
+[data-skin='automata'] .nav-item.active .nav-icon { color: var(--paper); }
+[data-skin='automata'] .nav-item.active::before { opacity: 1; }
+[data-skin='automata'] .nav-group-label,
+[data-skin='automata'] .nav-more summary { letter-spacing: 0.2em; color: var(--text-3); }
+
+/* Panels: paper with an offset shadow and ink corner brackets. */
+[data-skin='automata'] .card,
+[data-skin='automata'] .msg,
+[data-skin='automata'] .overview-tile,
+[data-skin='automata'] .supported-pad,
+[data-skin='automata'] .pad-request,
+[data-skin='automata'] .stick-card,
+[data-skin='automata'] .saved-curve-card,
+[data-skin='automata'] .review-dialog {
+  border: 1px solid var(--ink-soft);
+  border-radius: 0;
+  box-shadow: var(--a-shadow);
+  background:
+    linear-gradient(var(--ink), var(--ink)) top left / 12px 2px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) top left / 2px 12px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) bottom right / 12px 2px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) bottom right / 2px 12px no-repeat,
+    rgba(218, 212, 187, 0.9);
+}
+[data-skin='automata'] .pad-request { border-style: dashed; }
+[data-skin='automata'] .overview-tile:hover,
+[data-skin='automata'] .supported-pad:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 rgba(78, 75, 66, 0.25); }
+[data-skin='automata'] .overview-tile-icon { border-radius: 0; background: var(--ink); color: var(--paper); }
+
+/* Controls: square, outlined, inverted on hover — like the in-game menus. */
+[data-skin='automata'] .btn,
+[data-skin='automata'] .choice-btn,
+[data-skin='automata'] .creator-link,
+[data-skin='automata'] .remap-filter button,
+[data-skin='automata'] .remap-capture-choice {
+  border-radius: 0;
+  border: 1px solid var(--ink-soft);
+  background: rgba(196, 190, 166, 0.7);
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  box-shadow: 3px 3px 0 var(--ink-faint);
+}
+[data-skin='automata'] .btn:hover:not(:disabled),
+[data-skin='automata'] .choice-btn:hover:not(:disabled),
+[data-skin='automata'] .creator-link:hover,
+[data-skin='automata'] .remap-filter button:hover,
+[data-skin='automata'] .remap-capture-choice:hover:not(:disabled) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+[data-skin='automata'] .choice-btn.active,
+[data-skin='automata'] .remap-filter button.active,
+[data-skin='automata'] .stick-card.active,
+[data-skin='automata'] .remap-source.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+[data-skin='automata'] .choice-btn.active *,
+[data-skin='automata'] .stick-card.active * { color: var(--paper); }
+[data-skin='automata'] .creator-youtube svg,
+[data-skin='automata'] .creator-coffee svg { color: currentColor; }
+[data-skin='automata'] .topbar-links .creator-coffee { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+[data-skin='automata'] .topbar-links .creator-coffee:hover { background: var(--bad); border-color: var(--bad); }
+
+[data-skin='automata'] .pill,
+[data-skin='automata'] .key-chip { border-radius: 0; border: 1px solid var(--ink-soft); background: var(--ink-faint); color: var(--ink); }
+[data-skin='automata'] .input,
+[data-skin='automata'] input,
+[data-skin='automata'] select,
+[data-skin='automata'] textarea { border-radius: 0; border: 1px solid var(--ink-soft); background: rgba(232, 227, 205, 0.8); color: var(--ink); }
+[data-skin='automata'] .toggle { border-radius: 0; }
+
+/* Controller photos: printed onto the page. */
+[data-skin='automata'] .controller-photo::before { display: none; }
+[data-skin='automata'] .controller-photo img { filter: sepia(0.35) saturate(0.75) contrast(1.05) drop-shadow(6px 6px 0 rgba(78, 75, 66, 0.22)); transition: filter 0.3s; }
+[data-skin='automata'] .supported-pad:hover .controller-photo img { filter: drop-shadow(6px 6px 0 rgba(78, 75, 66, 0.22)); }
+
+/* Page change: a quick left-to-right wipe instead of the fade. */
+[data-skin='automata'] .page-enter { animation: automata-wipe 0.32s steps(8) both; }
+@keyframes automata-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skin='automata'] body::after { animation: none; display: none; }
+  [data-skin='automata'] .page-enter { animation: none; }
+}
+
+/* Small sidebar buttons keep their width: no extra tracking there. */
+[data-skin='automata'] .sidebar .btn { letter-spacing: 0.02em; font-size: 10.5px; padding-left: 6px; padding-right: 6px; }
+[data-skin='automata'] .card > h3 { border-left: 0; padding-left: 0; }
+[data-skin='automata'] .stick-card.active .stick-click-badge { background: transparent; border-color: var(--paper); color: var(--paper); }
+[data-skin='automata'] .stick-card.active .stick-card-icon .stick-cap { fill: var(--paper); stroke: var(--paper); }
+[data-skin='automata'] .stick-card.active .stick-card-icon .stick-letter { fill: var(--ink); }

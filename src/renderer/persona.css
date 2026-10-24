@@ -1,0 +1,228 @@
+/* ---------------------------------------------------------------------------
+   Persona 5 skin — the "persona" theme in theme.ts sets data-skin on <html>.
+   Red, black and white only: a spinning starburst and halftone dots behind
+   everything, slanted black panels with white borders, a jagged white menu
+   bar that tilts onto the picked item, ransom-note page titles and menus
+   that slam in. Built from scratch in CSS, no game assets.
+   --------------------------------------------------------------------------- */
+
+[data-skin='persona'] {
+  --p-red: #e5191c;
+  --p-red-dark: #a50e12;
+  --p-black: #0b0b0b;
+  --p-white: #f7f7f7;
+  --soft-line: rgba(247, 247, 247, 0.85);
+  --p-heavy: 'Arial Black', 'Segoe UI Black', 'Segoe UI', Impact, sans-serif;
+  --p-shadow: 6px 6px 0 var(--p-black);
+}
+
+/* Backdrop: red field, rotating starburst rays, halftone dots in the corners. */
+[data-skin='persona'] body { background: var(--p-red); }
+[data-skin='persona'] body::before {
+  content: '';
+  position: fixed;
+  inset: -60vmax;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(11, 11, 11, 0.22) 0deg 7deg, transparent 7deg 20deg);
+  animation: persona-spin 90s linear infinite;
+}
+[data-skin='persona'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, rgba(11, 11, 11, 0.55) 1.4px, transparent 1.9px) 0 0 / 11px 11px,
+    linear-gradient(transparent, transparent);
+  -webkit-mask-image: radial-gradient(ellipse at 100% 100%, #000 0%, transparent 55%), radial-gradient(ellipse at 0% 0%, #000 0%, transparent 40%);
+  mask-image: radial-gradient(ellipse at 100% 100%, #000 0%, transparent 55%), radial-gradient(ellipse at 0% 0%, #000 0%, transparent 40%);
+}
+@keyframes persona-spin { to { transform: rotate(360deg); } }
+[data-skin='persona'] .app { position: relative; z-index: 1; }
+[data-skin='persona'] .app,
+[data-skin='persona'] .main,
+[data-skin='persona'] .content { background: transparent; }
+
+[data-skin='persona'] ::selection { background: var(--p-black); color: var(--p-white); }
+[data-skin='persona'] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-skin='persona'] ::-webkit-scrollbar-track { background: transparent; }
+[data-skin='persona'] ::-webkit-scrollbar-thumb { background: var(--p-red-dark); }
+[data-skin='persona'] .sidebar ::-webkit-scrollbar-thumb { background: var(--p-red); }
+
+/* Type: heavy italic capitals everywhere a title lives. */
+[data-skin='persona'] h1,
+[data-skin='persona'] h2,
+[data-skin='persona'] h3 { font-family: var(--p-heavy); font-style: italic; text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* Page title: a white ransom-note slip, tilted, with a red first letter. */
+[data-skin='persona'] .tuning-page-heading h2 {
+  display: inline-block;
+  padding: 6px 18px 4px 14px;
+  background: var(--p-white);
+  color: var(--p-black);
+  font-size: 30px;
+  transform: rotate(-2deg) skewX(-8deg);
+  box-shadow: var(--p-shadow);
+  clip-path: polygon(0 6%, 97% 0, 100% 88%, 3% 100%);
+}
+[data-skin='persona'] .tuning-page-heading h2::first-letter { color: var(--p-white); background: var(--p-red); padding: 0 4px; font-size: 1.25em; }
+[data-skin='persona'] .tuning-page-heading p { display: inline-block; margin-top: 10px; padding: 4px 10px; background: var(--p-black); color: var(--p-white); transform: skewX(-8deg); }
+
+/* Card titles: small black-on-white tags. */
+[data-skin='persona'] .card > h3,
+[data-skin='persona'] .supported-pads h3,
+[data-skin='persona'] .msg h3 {
+  display: inline-block;
+  border-left: 0;
+  padding: 3px 12px;
+  background: var(--p-white);
+  color: var(--p-black);
+  font-size: 14px;
+  transform: skewX(-12deg) rotate(-1deg);
+  box-shadow: 4px 4px 0 var(--p-red);
+}
+[data-skin='persona'] .supported-pads h3 { box-shadow: 4px 4px 0 var(--p-black); }
+
+/* Sidebar: black slab with a red slash, logo as a stamped title. */
+[data-skin='persona'] .sidebar {
+  background:
+    linear-gradient(170deg, transparent 0 82%, var(--p-red) 82% 83.5%, transparent 83.5%),
+    radial-gradient(circle, rgba(247, 247, 247, 0.08) 1.2px, transparent 1.6px) 0 0 / 9px 9px,
+    var(--p-black);
+  border-right: 4px solid var(--p-white);
+}
+[data-skin='persona'] .brand h1,
+[data-skin='persona'] .brand h1 span { font-family: var(--p-heavy); font-style: italic; color: var(--p-white); }
+[data-skin='persona'] .brand h1 span { color: var(--p-red); -webkit-text-stroke: 1px var(--p-white); }
+[data-skin='persona'] .brand-mark { color: var(--p-red); }
+[data-skin='persona'] .status-bar { background: transparent; }
+
+/* Menu: white jagged slab under the picked item, tilted like the game's menus. */
+[data-skin='persona'] .nav-mark {
+  border-radius: 0;
+  background: var(--p-white);
+  box-shadow: none;
+  clip-path: polygon(2% 12%, 100% 0, 96% 100%, 0 86%);
+  filter: drop-shadow(5px 5px 0 var(--p-red));
+}
+[data-skin='persona'] .nav-item {
+  border-radius: 0;
+  color: var(--p-white);
+  font-family: var(--p-heavy);
+  font-style: italic;
+  text-transform: uppercase;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.12s;
+}
+[data-skin='persona'] .nav-item:hover { background: transparent; color: var(--p-red); transform: translateX(6px) skewX(-8deg); }
+[data-skin='persona'] .nav-item.active { color: var(--p-black); transform: rotate(-3deg) translateX(4px) scale(1.06); }
+[data-skin='persona'] .nav-item.active .nav-icon { color: var(--p-red); }
+[data-skin='persona'] .nav-group-label,
+[data-skin='persona'] .nav-more summary { color: var(--p-red); font-family: var(--p-heavy); font-style: italic; }
+
+/* Top bar: black band with a red under-stripe. */
+[data-skin='persona'] .topbar { background: var(--p-black); border-bottom: 4px solid var(--p-white); box-shadow: 0 4px 0 var(--p-red); }
+[data-skin='persona'] .topbar h2 { color: var(--p-white); font-size: 20px; text-shadow: 3px 3px 0 var(--p-red); transform: skewX(-10deg); }
+
+/* Panels: black slabs, thick white border, hard black shadow, cut corners. */
+[data-skin='persona'] .card,
+[data-skin='persona'] .msg,
+[data-skin='persona'] .overview-tile,
+[data-skin='persona'] .supported-pad,
+[data-skin='persona'] .pad-request,
+[data-skin='persona'] .saved-curve-card,
+[data-skin='persona'] .review-dialog {
+  border: 3px solid var(--p-white);
+  border-radius: 0;
+  background: radial-gradient(circle, rgba(247, 247, 247, 0.05) 1.2px, transparent 1.6px) 0 0 / 8px 8px, var(--p-black);
+  box-shadow: 8px 8px 0 rgba(11, 11, 11, 0.85);
+  color: var(--p-white);
+}
+[data-skin='persona'] .overview-tile,
+[data-skin='persona'] .supported-pad { clip-path: polygon(0 0, 100% 3%, 98% 100%, 2% 96%); }
+[data-skin='persona'] .overview-tile:nth-child(odd),
+[data-skin='persona'] .supported-pad:nth-child(odd) { transform: rotate(-1deg); }
+[data-skin='persona'] .overview-tile:nth-child(even),
+[data-skin='persona'] .supported-pad:nth-child(even) { transform: rotate(1deg); }
+[data-skin='persona'] .overview-tile:hover,
+[data-skin='persona'] .supported-pad:hover { transform: rotate(-2deg) scale(1.04); background-color: var(--p-red); }
+[data-skin='persona'] .overview-tile-icon { border-radius: 0; background: var(--p-red); color: var(--p-white); transform: skewX(-10deg); }
+[data-skin='persona'] .overview-tile-label { color: var(--p-red); font-family: var(--p-heavy); font-style: italic; text-transform: uppercase; }
+[data-skin='persona'] .supported-pad span { font-family: var(--p-heavy); font-style: italic; text-transform: uppercase; }
+[data-skin='persona'] .pad-request { border-style: dashed; }
+
+/* Buttons: slanted black blocks, white border; red flash and a kick on hover. */
+[data-skin='persona'] .btn,
+[data-skin='persona'] .choice-btn,
+[data-skin='persona'] .creator-link,
+[data-skin='persona'] .remap-filter button,
+[data-skin='persona'] .remap-capture-choice {
+  border-radius: 0;
+  border: 2px solid var(--p-white);
+  background: var(--p-black);
+  color: var(--p-white);
+  font-family: var(--p-heavy);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  transform: skewX(-10deg);
+  box-shadow: 4px 4px 0 rgba(11, 11, 11, 0.7);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.1s, color 0.1s;
+}
+[data-skin='persona'] .btn:hover:not(:disabled),
+[data-skin='persona'] .choice-btn:hover:not(:disabled),
+[data-skin='persona'] .creator-link:hover,
+[data-skin='persona'] .remap-filter button:hover,
+[data-skin='persona'] .remap-capture-choice:hover:not(:disabled) { background: var(--p-red); color: var(--p-white); transform: skewX(-10deg) rotate(-2deg) scale(1.05); }
+[data-skin='persona'] .btn:active:not(:disabled),
+[data-skin='persona'] .choice-btn:active:not(:disabled) { transform: skewX(-10deg) scale(0.95); }
+[data-skin='persona'] .choice-btn.active,
+[data-skin='persona'] .remap-filter button.active,
+[data-skin='persona'] .remap-source.selected { background: var(--p-white); color: var(--p-black); border-color: var(--p-black); box-shadow: 4px 4px 0 var(--p-red); }
+[data-skin='persona'] .choice-btn.active * { color: var(--p-black); }
+[data-skin='persona'] .creator-youtube svg,
+[data-skin='persona'] .creator-coffee svg { color: currentColor; }
+[data-skin='persona'] .topbar-links .creator-coffee { background: var(--p-red); border-color: var(--p-white); color: var(--p-white); }
+[data-skin='persona'] .topbar-links .creator-coffee:hover { background: var(--p-white); color: var(--p-red); }
+[data-skin='persona'] .sidebar .btn { font-size: 10px; letter-spacing: 0; padding-left: 6px; padding-right: 6px; }
+
+/* Stick picker: white card when picked, black otherwise. */
+[data-skin='persona'] .stick-card { border-radius: 0; border: 3px solid var(--p-white); background: var(--p-black); color: var(--p-white); transform: skewX(-8deg); box-shadow: 6px 6px 0 rgba(11, 11, 11, 0.8); }
+[data-skin='persona'] .stick-card.active { background: var(--p-white); color: var(--p-black); box-shadow: 6px 6px 0 var(--p-black); transform: skewX(-8deg) rotate(-2deg); }
+[data-skin='persona'] .stick-card.active .stick-card-icon .stick-cap { fill: var(--p-red); stroke: var(--p-red); }
+[data-skin='persona'] .stick-card.active .stick-card-icon .stick-letter { fill: var(--p-white); }
+[data-skin='persona'] .stick-card.active .stick-click-badge { border-color: var(--p-black); color: var(--p-black); background: transparent; }
+
+[data-skin='persona'] .pill,
+[data-skin='persona'] .key-chip { border-radius: 0; border: 2px solid var(--p-white); background: var(--p-black); color: var(--p-white); font-style: italic; transform: skewX(-10deg); }
+[data-skin='persona'] .input,
+[data-skin='persona'] input,
+[data-skin='persona'] select,
+[data-skin='persona'] textarea { border-radius: 0; border: 2px solid var(--p-white); background: #161616; color: var(--p-white); }
+
+/* Controller photos: white sticker outline and a hard shadow. */
+[data-skin='persona'] .controller-photo::before { display: none; }
+[data-skin='persona'] .controller-photo img {
+  filter: drop-shadow(3px 0 0 var(--p-white)) drop-shadow(-3px 0 0 var(--p-white)) drop-shadow(0 3px 0 var(--p-white)) drop-shadow(0 -3px 0 var(--p-white)) drop-shadow(8px 8px 0 var(--p-black));
+}
+
+/* Page change: the page slams in from the left and settles with a jolt. */
+[data-skin='persona'] .page-enter { animation: persona-slam 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+@keyframes persona-slam {
+  0% { opacity: 0; transform: translateX(-90px) skewX(-18deg); }
+  60% { opacity: 1; transform: translateX(10px) skewX(4deg); }
+  100% { transform: none; }
+}
+[data-skin='persona'] .overview-tile,
+[data-skin='persona'] .supported-pad { animation: persona-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@keyframes persona-pop { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skin='persona'] body::before { animation: none; }
+  [data-skin='persona'] .page-enter,
+  [data-skin='persona'] .overview-tile,
+  [data-skin='persona'] .supported-pad { animation: none; }
+}

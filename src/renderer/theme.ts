@@ -1,15 +1,21 @@
 /**
  * App themes — the UI stylesheet runs on CSS variables, so a theme is just
- * 15 color overrides applied to :root. Persisted in localStorage, applied
+ * 15 color overrides applied to :root (plus an optional skin for a full restyle). Persisted in localStorage, applied
  * on launch and on every pick. Canvas graphs (curve plot, dials) use fixed
  * paint colors and intentionally keep theirs in every theme.
  */
 import { createContext, useEffect, useState } from 'react'
 
+export type ThemeCategory = 'colors' | 'games' | 'apps'
+
 export interface AppTheme {
   id: string
   label: string
+  /** Section of the theme picker it sits in. */
+  category: ThemeCategory
   vars: Record<string, string>
+  /** Optional full restyle beyond colours: sets data-skin on <html> (see automata.css). */
+  skin?: string
 }
 
 const VARS = [
@@ -23,6 +29,7 @@ const VARS = [
 export const THEMES: ReadonlyArray<AppTheme> = [
   {
     id: 'default',
+    category: 'colors',
     label: 'Default',
     vars: {
       '--bg': '#0f1115', '--bg-1': '#161920', '--bg-2': '#1c2028', '--bg-3': '#232833',
@@ -34,6 +41,8 @@ export const THEMES: ReadonlyArray<AppTheme> = [
   },
   {
     id: 'cyberpunk',
+    category: 'games',
+    skin: 'cyberpunk',
     label: 'Cyberpunk 2077',
     vars: {
       '--bg': '#050508', '--bg-1': '#121218', '--bg-2': '#1a1a24', '--bg-3': '#242433',
@@ -45,18 +54,8 @@ export const THEMES: ReadonlyArray<AppTheme> = [
     }
   },
   {
-    id: 'sunset-overdrive',
-    label: 'Sunset Overdrive',
-    vars: {
-      '--bg': '#140f1e', '--bg-1': '#1e1429', '--bg-2': '#2b1d3d', '--bg-3': '#3a2651',
-      '--line': '#4a3266', '--line-2': '#6b4a94',
-      '--text': '#fdf0f5', '--text-2': '#d4a9d8', '--text-3': '#8f6ba0',
-      '--accent': '#ff7a1a', '--accent-2': '#ffc53d', '--on-accent': '#201002',
-      '--good': '#00d9a0', '--warn': '#ffd23d', '--bad': '#ff4d6d', '--violet': '#b967ff'
-    }
-  },
-  {
     id: 'discord',
+    category: 'apps',
     label: 'Discord',
     vars: {
       '--bg': '#1e1f22', '--bg-1': '#2b2d31', '--bg-2': '#35373c', '--bg-3': '#404249',
@@ -68,6 +67,7 @@ export const THEMES: ReadonlyArray<AppTheme> = [
   },
   {
     id: 'spotify',
+    category: 'apps',
     label: 'Spotify',
     vars: {
       '--bg': '#121212', '--bg-1': '#181818', '--bg-2': '#242424', '--bg-3': '#2e2e2e',
@@ -79,19 +79,8 @@ export const THEMES: ReadonlyArray<AppTheme> = [
     }
   },
   {
-    id: 'apex',
-    label: 'Apex Legends',
-    vars: {
-      '--bg': '#0d0d0e', '--bg-1': '#161617', '--bg-2': '#1f1e1f', '--bg-3': '#2a2828',
-      '--line': '#332f2f', '--line-2': '#4d4444',
-      '--text': '#f2efe9', '--text-2': '#b9b1a7', '--text-3': '#7a716a',
-      '--accent': '#da292a', '--accent-2': '#ff5d4f', '--on-accent': '#ffffff',
-      '--good': '#5fd068', '--warn': '#f2a93b', '--bad': '#ff3b30', '--violet': '#b07cff',
-      '--radius': '3px', '--radius-sm': '2px'
-    }
-  },
-  {
     id: 'halloween',
+    category: 'colors',
     label: 'Halloween',
     vars: {
       '--bg': '#0e0813', '--bg-1': '#171020', '--bg-2': '#221530', '--bg-3': '#2e1d42',
@@ -102,7 +91,50 @@ export const THEMES: ReadonlyArray<AppTheme> = [
     }
   },
   {
+    id: 'automata',
+    category: 'games',
+    label: 'NieR:Automata',
+    skin: 'automata',
+    vars: {
+      '--bg': '#cdc8b0', '--bg-1': '#d3cdb5', '--bg-2': '#dad4bb', '--bg-3': '#c4bea6',
+      '--line': '#aaa48d', '--line-2': '#8b8573',
+      '--text': '#4e4b42', '--text-2': '#5f5b50', '--text-3': '#858071',
+      '--accent': '#4e4b42', '--accent-2': '#6e6a5c', '--on-accent': '#dad4bb',
+      '--good': '#57694a', '--warn': '#9c7b38', '--bad': '#b4533e', '--violet': '#6b5d7a',
+      '--radius': '0', '--radius-sm': '0'
+    }
+  },
+  {
+    id: 'persona',
+    category: 'games',
+    label: 'Persona 5',
+    skin: 'persona',
+    vars: {
+      '--bg': '#e5191c', '--bg-1': '#0b0b0b', '--bg-2': '#0b0b0b', '--bg-3': '#1c1c1c',
+      '--line': '#3a3a3a', '--line-2': '#f7f7f7',
+      '--text': '#f7f7f7', '--text-2': '#e4e4e4', '--text-3': '#a9a9a9',
+      '--accent': '#e5191c', '--accent-2': '#ff5a5a', '--on-accent': '#ffffff',
+      '--good': '#ffffff', '--warn': '#ffd23d', '--bad': '#ff2a2a', '--violet': '#ffffff',
+      '--radius': '0', '--radius-sm': '0'
+    }
+  },
+  {
+    id: 'hollow',
+    category: 'games',
+    label: 'Hollow Knight',
+    skin: 'hollow',
+    vars: {
+      '--bg': '#070a12', '--bg-1': '#0b0f1a', '--bg-2': '#0e1320', '--bg-3': '#161c2c',
+      '--line': '#232b3f', '--line-2': '#56607a',
+      '--text': '#e8ecf2', '--text-2': '#aeb6c6', '--text-3': '#6d7690',
+      '--accent': '#dfe7f5', '--accent-2': '#ffffff', '--on-accent': '#0b0f1a',
+      '--good': '#9fd3ff', '--warn': '#f0a050', '--bad': '#d64545', '--violet': '#8a7fd8',
+      '--radius': '2px', '--radius-sm': '2px'
+    }
+  },
+  {
     id: 'nord',
+    category: 'colors',
     label: 'Nord',
     vars: {
       '--bg': '#2E3440', '--bg-1': '#3B4252', '--bg-2': '#434C5E', '--bg-3': '#4C566A',
@@ -114,13 +146,19 @@ export const THEMES: ReadonlyArray<AppTheme> = [
   }
 ]
 
+/** Picker sections, in display order. */
+export const THEME_CATEGORIES: ReadonlyArray<ThemeCategory> = ['colors', 'games', 'apps']
+
 export function themeById(id: string): AppTheme {
   return THEMES.find((t) => t.id === id) ?? THEMES[0]
 }
 
 export function applyTheme(id: string): void {
-  const vars = themeById(id).vars
+  const theme = themeById(id)
+  const vars = theme.vars
   const root = document.documentElement
+  if (theme.skin) root.dataset.skin = theme.skin
+  else delete root.dataset.skin
   for (const key of VARS) {
     const value = vars[key]
     if (value) root.style.setProperty(key, value)

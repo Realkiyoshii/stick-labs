@@ -13,6 +13,7 @@ import { discoverHyperStrike, hyperstrikeSession } from './hyperstrike'
 import type { HsCalStep, HsCalType, HsEdit } from '../shared/hyperstrike'
 import { createLjApi } from '../shared/leadjoy-session'
 import type { LjButtonTarget } from '../shared/leadjoy'
+import { YT_LIVE_PAGE, YT_OFFLINE, looksLikeChannelPage, parseLivePage, type YtLive } from '../shared/youtubeLive'
 import { steamInfo, exportApexDeadzones, listInstalledGames, exportDeadzonesToGames } from './steam'
 import { PROFILE_LENGTH, isFineCalibrationStatus } from '../shared/protocol'
 import { runDeepPoll } from './deeppoll'
@@ -211,6 +212,20 @@ handle('system:openExternal', (url: string) => {
   return true
 })
 handle('system:version', () => app.getVersion())
+// Is the creator live on YouTube? Read the channel's /live page (no API key);
+// any failure reads as offline.
+handle('system:youtubeLive', async (): Promise<YtLive> => {
+  try {
+    const res = await fetch(YT_LIVE_PAGE, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'CONSENT=YES+1' },
+      signal: AbortSignal.timeout(15000)
+    })
+    const html = await res.text()
+    return res.ok && looksLikeChannelPage(html) ? parseLivePage(html) : YT_OFFLINE
+  } catch {
+    return YT_OFFLINE
+  }
+})
 // The renderer reports staged-but-unwritten edits (with its own translated
 // wording) so hiding to the tray or quitting can warn first.
 type UnsavedPrompt = { message: string; detail: string; confirm: string; cancel: string }

@@ -19,7 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: node scripts/test.mjs tests/rawbytes.ts tests/models.ts tests/t3ce.ts tests/calibration.ts tests/trigger.ts tests/curveidentity.ts tests/clean-profile.ts tests/dynamic.ts tests/curveadjust.ts tests/review.ts tests/dotoncurve.ts tests/axisscale.ts tests/leadjoy.ts tests/leadjoy-session.ts tests/sharecode.ts tests/community.ts tests/shiftlayer.ts tests/hyperstrike.ts
+      - run: node scripts/test.mjs tests/rawbytes.ts tests/models.ts tests/t3ce.ts tests/calibration.ts tests/trigger.ts tests/curveidentity.ts tests/clean-profile.ts tests/dynamic.ts tests/curveadjust.ts tests/review.ts tests/dotoncurve.ts tests/axisscale.ts tests/leadjoy.ts tests/leadjoy-session.ts tests/sharecode.ts tests/community.ts tests/shiftlayer.ts tests/hyperstrike.ts tests/youtube-live.ts
       # Create the draft up front: the installer and portable targets publish
       # in parallel and otherwise each create their own draft for the tag.
       - run: |

@@ -1,4 +1,7 @@
 import { buildCleanProfile } from '@shared/clean-profile'
+import { ControllerArt, pictureKey, SUPPORTED_PADS } from './ControllerArt'
+import { DeadzoneCards, type LiveStick } from './DeadzoneCards'
+import { YT_CHANNEL_URL, YT_OFFLINE, type YtLive } from '@shared/youtubeLive'
 import { capturedKeyTarget, capturedPadTarget, PadCaptureGate, type CaptureFamily } from '@shared/button-capture'
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TriggerSettings } from './TriggerSettings'
@@ -29,7 +32,7 @@ import {
 import { keyLabel, displayMapping, REMAP_TARGETS, SHIFT_KEY, SHIFT_PROFILE } from '@shared/keymap'
 import { createPortal, flushSync } from 'react-dom'
 import { LANGS, LangContext, tr, useLangState, useT } from './i18n'
-import { THEMES, ThemeContext, useThemeState } from './theme'
+import { THEMES, THEME_CATEGORIES, ThemeContext, useThemeState } from './theme'
 import type { DeepPollResult } from '@shared/deeppoll'
 import { firmwareAtLeast, hsNormalizeCurve, HS_POLLING_HZ, HS_USB_MODES, HS_CLAMP, HS_CURVE_MAX, HS_CURVE_POINTS, HS_INVERT, HS_OVERSAMPLING, HS_PRESETS, HS_SPEED_STRENGTH, planWrites, type HsEdit, type HsSnapshot } from '@shared/hyperstrike'
 import { LJ_HID_KEYS, LJ_MOUSE_BUTTONS, LJ_MAP_GAMEPAD, LJ_MAP_KEYBOARD, LJ_MAP_MOUSE, LJ_SHAPES, LJ_PHYSICAL, ljCurveZones, ljFitZones, ljLinearCurve, ljPercentToWire, ljSampleDesign, ljTargetLabel, type LjButtonTarget, type LjSnapshot, type LjStickZones, type LjTriggerZones } from '@shared/leadjoy'
@@ -160,17 +163,117 @@ function Hint({ children, style }: { children: React.ReactNode; style?: React.CS
   )
 }
 
-function CandidateButton({ candidate, onConnect, displayName, connecting = false }: { candidate: Candidate; onConnect: (path: string) => void; displayName?: string; connecting?: boolean }): JSX.Element {
-  const t = useT()
+/** A detected controller's name and picture key (null when it isn't a supported pad). */
+function candidateIdentity(candidate: Candidate, displayName?: string): { name: string; pad: string | null } {
   const known = identifyModel(candidate.product, candidate.productId)
   const genericProduct = !candidate.product || /^(gamepad|xbox 360 controller for windows)$/i.test(candidate.product.trim())
   const fallbackName = genericProduct
     ? `Controller · 0x${candidate.productId.toString(16).padStart(4, '0')}`
-    : candidate.product
+    : candidate.product ?? ''
+  const pictured = displayName ? identifyModel(displayName, candidate.productId) : known
+  return { name: displayName ?? (known ? known.marketingName : fallbackName), pad: pictured ? pictureKey(pictured.id, displayName) : null }
+}
+
+/** One live stick: a ring with a crosshair and a dot that follows the stick (0..255 per axis). */
+function MiniStick({ label, x, y }: { label: string; x: number | null; y: number | null }): JSX.Element {
+  const r = 20
+  const live = x !== null && y !== null
+  const dx = live ? Math.max(-1, Math.min(1, (x - 128) / 127)) * r : 0
+  const dy = live ? Math.max(-1, Math.min(1, (y - 128) / 127)) * r : 0
   return (
-    <button className={`btn sm${connecting ? ' connecting' : ''}`} aria-busy={connecting} disabled={connecting} onClick={() => onConnect(candidate.path)}>
-      {connecting ? <><span className="connect-dot" aria-hidden="true" />{t('conn.connecting')}</> : <>{displayName ?? (known ? known.marketingName : fallbackName)}{candidate.preferred ? ' ★' : ''}</>}
-    </button>
+    <div className="mini-stick">
+      <svg viewBox="-26 -26 52 52" aria-hidden="true">
+        <circle className="mini-stick-ring" r={r} />
+        <line className="mini-stick-cross" x1={-r} x2={r} y1={0} y2={0} />
+        <line className="mini-stick-cross" x1={0} x2={0} y1={-r} y2={r} />
+        {live && <line className="mini-stick-trail" x1={0} y1={0} x2={dx} y2={dy} />}
+        <circle className={`mini-stick-dot${live ? '' : ' idle'}`} cx={dx} cy={dy} r={4} />
+      </svg>
+      <span>{label}</span>
+    </div>
+  )
+}
+
+/**
+ * Sidebar card for the pad in use: its picture, name, profile and firmware,
+ * and both sticks live on every page. With nothing connected it says so and
+ * points at the connect card.
+ */
+function SideDeviceCard({ pad, name, detail, live }: {
+  pad: string | null
+  name: string | null
+  detail: string | null
+  live: { lx: number; ly: number; rx: number; ry: number } | null
+}): JSX.Element {
+  const t = useT()
+  if (!name) {
+    return (
+      <div className="side-device empty">
+        <span className="side-device-plug" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2v5M15 2v5M7 7h10v4a5 5 0 0 1-10 0V7ZM12 16v6" /></svg>
+        </span>
+        <strong>{t('side.noPad')}</strong>
+        <span>{t('side.noPadHint')}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="side-device">
+      <div className="side-device-head">
+        <span className="side-device-live" aria-hidden="true" />
+        <span>{t('side.inUse')}</span>
+      </div>
+      <div className="side-device-body">
+        {pad && <ControllerArt pad={pad} />}
+        <div className="side-device-info">
+          <strong className="side-device-name">{name}</strong>
+          {detail && <span className="side-device-detail">{detail}</span>}
+        </div>
+      </div>
+      <div className="side-device-sticks">
+        <MiniStick label="L" x={live?.lx ?? null} y={live?.ly ?? null} />
+        <MiniStick label="R" x={live?.rx ?? null} y={live?.ry ?? null} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Drop-down under the top bar while a supported pad is plugged in but not
+ * connected: the one place to connect, so it stays until Connect is clicked.
+ */
+function ConnectDrop({ candidates, names, connectingPath, onConnect }: {
+  candidates: Candidate[]
+  names: Record<string, string>
+  connectingPath: string | null
+  onConnect: (path: string) => void
+}): JSX.Element | null {
+  const t = useT()
+  const ready = candidates
+    .map((c) => ({ c, ...candidateIdentity(c, names[c.path]) }))
+    .filter((r) => r.pad || r.c.preferred)
+  if (ready.length === 0) return null
+  return (
+    <div className="connect-drop" role="dialog" aria-live="polite" aria-label={t('conn.readyTitle')}>
+      {ready.map(({ c, name, pad }) => {
+        const busy = connectingPath === c.path
+        return (
+          <div key={c.path} className="connect-drop-card">
+            {pad ? <ControllerArt pad={pad} className="connect-drop-art" /> : <span className="connect-drop-art" aria-hidden="true" />}
+            <div className="connect-drop-text">
+              <span className="connect-drop-eyebrow"><span className="connect-drop-pulse" aria-hidden="true" />{t('conn.readyTitle')}</span>
+              <strong>{name}</strong>
+              <span>{t('conn.readyBody')}</span>
+            </div>
+            <div className="connect-drop-actions">
+              <button type="button" className={`btn primary${busy ? ' connecting' : ''}`} disabled={busy} aria-busy={busy} onClick={() => onConnect(c.path)}>
+                {busy ? <><span className="connect-dot" aria-hidden="true" />{t('conn.connecting')}</> : t('conn.connectNow')}
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -555,7 +658,10 @@ function HsOverviewPanel({ snap, draft, onOpen }: { snap: HsSnapshot; draft: HsD
   const curve = (pts: Array<[number, number]>): Array<{ x: number; y: number }> => pts.map(([x, y]) => ({ x, y }))
   return (
     <div className="overview">
-      <div className="tuning-page-heading"><h2>HyperStrike</h2><p>{t('overview.sub').replace('{slot}', `P${snap.profile}`).replace('{fw}', snap.device.firmware || '—')}</p></div>
+      <div className="overview-hero">
+        <div className="tuning-page-heading"><h2>HyperStrike</h2><p>{t('overview.sub').replace('{slot}', `P${snap.profile}`).replace('{fw}', snap.device.firmware || '—')}</p></div>
+        <ControllerArt pad="HyperStrike" />
+      </div>
       <div className="overview-grid">
         {tile('poll', 'polling', t('overview.polling'), snap.pollingHz ? (snap.pollingHz >= 1000 ? `${Math.round(hzShown / 100) / 10}K Hz` : `${Math.round(hzShown)} Hz`) : '—', 'device')}
         {tile('bits', 'bits', t('overview.bits'), `${Math.round(bitsShown)}-bit`, 'device')}
@@ -621,7 +727,7 @@ function HsPages({ tab, snap, draft, setDraft, which, busy, live, editors, onEdi
         </div>
       </div>
     </div><div className="stack stick-clean-controls">
-      <LjZonesCard count={HS_CURVE_POINTS} fixedCeiling points={pts(curveKey)} onChange={(next) => stage(curveKey, next)} />
+      <LjZonesCard count={HS_CURVE_POINTS} fixedCeiling points={pts(curveKey)} live={live ? (which === 0 ? { x: live.lx, y: live.ly } : { x: live.rx, y: live.ry }) : null} onChange={(next) => stage(curveKey, next)} />
     </div></div>
   </>
 
@@ -1039,10 +1145,11 @@ function NavIcon({ kind, size = 18 }: { kind: NavIconKind; size?: number }): JSX
 }
 
 /** Home screen: the pad's key settings at a glance; every tile opens its tab. */
-function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
+function OverviewPanel({ profile, slot, firmware, modelId, modelName, onOpen }: {
   profile: Profile
   slot: number
   firmware: string | null
+  modelId: string
   modelName: string
   onOpen: (tab: 'sticks' | 'curves' | 'device' | 'shift') => void
 }): JSX.Element {
@@ -1064,7 +1171,10 @@ function OverviewPanel({ profile, slot, firmware, modelName, onOpen }: {
   )
   return (
     <div className="overview">
-      <div className="tuning-page-heading"><h2>{modelName}</h2><p>{t('overview.sub').replace('{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{fw}', firmware ?? '—')}</p></div>
+      <div className="overview-hero">
+        <div className="tuning-page-heading"><h2>{modelName}</h2><p>{t('overview.sub').replace('{slot}', slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`).replace('{fw}', firmware ?? '—')}</p></div>
+        <ControllerArt pad={pictureKey(modelId)} />
+      </div>
       <div className="overview-grid">
         {tile('poll', 'polling', t('overview.polling'), hz ? (hz >= 1000 ? `${Math.round(hzShown / 100) / 10}K Hz` : `${Math.round(hzShown)} Hz`) : `gear ${gear}`, 'device')}
         {tile('bits', 'bits', t('overview.bits'), `${Math.round(bitsShown)}-bit`, 'device')}
@@ -2812,14 +2922,15 @@ const ARROW_DOWN = '10,14.5 14.5,8 5.5,8'
 const ARROW_LEFT = '5.5,10 12,5.5 12,14.5'
 const ARROW_RIGHT = '14.5,10 8,5.5 8,14.5'
 
-/** Big Left / Right stick cards: a pad with the chosen stick lit, the name and its click (L3 / R3). */
+/** Big Left / Right stick cards: a thumbstick marked L or R, the name and its click (L3 / R3). */
 function StickCards({ which, onPick }: { which: number; onPick: (i: number) => void }): JSX.Element {
   const t = useT()
   return <>{(['left', 'right'] as const).map((side, i) => (
     <button key={side} type="button" className={`stick-card${i === which ? ' active' : ''}`} aria-pressed={i === which} onClick={() => onPick(i)}>
       <svg className="stick-card-icon" width="56" height="56" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M7 5.5c-2.4 0-4 2.1-4 4.6v5.2c0 1.5 1 2.7 2.3 2.7 1 0 1.6-.7 2.2-1.5.5-.7 1-1.2 1.9-1.2h5.2c.9 0 1.4.5 1.9 1.2.6.8 1.2 1.5 2.2 1.5 1.3 0 2.3-1.2 2.3-2.7v-5.2c0-2.5-1.6-4.6-4-4.6H7Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" opacity=".55" />
-        {(['left', 'right'] as const).map((s) => <circle key={s} className={s === side ? 'lit' : undefined} cx={s === 'left' ? 9.4 : 14.6} cy="13.4" r="2.3" />)}
+        <circle className="stick-base" cx="12" cy="12" r="10.5" />
+        <circle className="stick-cap" cx="12" cy="12" r="7" />
+        <text className="stick-letter" x="12" y="12" textAnchor="middle" dominantBaseline="central">{side === 'left' ? 'L' : 'R'}</text>
       </svg>
       <span className="stick-card-text"><strong>{t(side === 'left' ? 'cal.left' : 'cal.right')} {t('sticks.stick')}</strong><span className="stick-click-badge">{side === 'left' ? 'L3' : 'R3'}</span></span>
     </button>
@@ -3525,31 +3636,29 @@ function LjLiveCard({ live, windows, hintKey = 'lj.liveHint' }: { live: { lx: nu
   )
 }
 
-function LjZonesCard({ points, onChange, count = 8, fixedCeiling = false }: {
+function LjZonesCard({ points, onChange, live, count = 8, fixedCeiling = false }: {
   points: Array<{ x: number; y: number }>
   onChange: (next: Array<{ x: number; y: number }>) => void
+  /** This stick's live position (0..255 per axis). */
+  live: LiveStick
   count?: number
   /** The pad requires the last point at 100% output: no ceiling slider. */
   fixedCeiling?: boolean
 }): JSX.Element | null {
-  const t = useT()
   if (points.length !== count) return null
   const z = ljCurveZones(toPairs(points), count)
-  const apply = (patch: Partial<LjStickZones>): void => onChange(toPts(ljFitZones(toPairs(points), { ...z, ...patch }, count)))
-  const slider = (key: keyof LjStickZones, label: string): JSX.Element => (
-    <Slider label={label} value={z[key]} min={0} max={1000} step={1} format={(v) => `${(v / 10).toFixed(1)}%`} onChange={(v) => apply({ [key]: v })} />
-  )
+  const full: [number, number] = [0, 1000]
   return (
-    <div className="lj-zone-sections"><div className="card lj-zones-card">
-      <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.inputLabel')}</span><h3>{t('sticks.inputTitle')}</h3></div><span className="pill">0.1%</span></div>
-      <p className="stick-intro">{t('sticks.inputHelp')}</p>
-      <div className="stack lj-zone-primary" style={{ gap: 12, marginTop: 8 }}>
-        {slider('start', t('sticks.innerLabel'))}
-        {slider('end', t('sticks.outerLabel'))}
-      </div>
-      </div><div className="card stick-output-card"><div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.outputLabel')}</span><h3>{t('sticks.outputTitle')}</h3></div></div><p className="stick-intro">{t('sticks.outputHelp')}</p>
-      <div className="stack" style={{ gap: 18 }}>{slider('antiStart', t('sticks.floorLabel'))}{!fixedCeiling && slider('antiEnd', t('sticks.ceilingLabel'))}</div>
-      </div>
+    <div className="lj-zone-sections">
+      <DeadzoneCards
+        zones={{ start: z.start, end: z.end, floor: z.antiStart, ceiling: z.antiEnd }}
+        limits={{ start: full, end: full, floor: full, ceiling: full }}
+        live={live}
+        liveIsOutput
+        fixedCeiling={fixedCeiling}
+        inputClass="card lj-zones-card"
+        onChange={(n) => onChange(toPts(ljFitZones(toPairs(points), { start: n.start, end: n.end, antiStart: n.floor, antiEnd: n.ceiling }, count)))}
+      />
     </div>
   )
 }
@@ -3918,7 +4027,6 @@ export default function App(): JSX.Element {
   ).filter((c) => !(c.productId === 0x0575 && hasDirectPad))
   const preferredCandidates = visibleCandidates.filter((c) => c.preferred)
   const primaryCandidates = preferredCandidates.length > 0 ? preferredCandidates : visibleCandidates
-  const otherCandidates = preferredCandidates.length > 0 ? visibleCandidates.filter((c) => !c.preferred) : []
   const [connected, setConnected] = useState(false)
   const [info, setInfo] = useState<DeviceInfo | null>(null)
   // LeadJoy Saber Plus / Xeno Pro — shared protocol, same UI as GameSir.
@@ -3980,6 +4088,15 @@ export default function App(): JSX.Element {
   const [calibrationRunning, setCalibrationRunning] = useState(false)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [connectingPath, setConnectingPath] = useState<string | null>(null)
+  // Live on YouTube: checked now and every 2 minutes; the YouTube button glows and opens the stream.
+  const [ytLive, setYtLive] = useState<YtLive>(YT_OFFLINE)
+  useEffect(() => {
+    let alive = true
+    const check = (): void => { void api().youtubeLive().then((s) => { if (alive) setYtLive(s) }).catch(() => undefined) }
+    check()
+    const id = window.setInterval(check, 120000)
+    return () => { alive = false; window.clearInterval(id) }
+  }, [])
   const [savedFlash, setSavedFlash] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
   const navRef = useRef<HTMLElement | null>(null)
@@ -4919,13 +5036,16 @@ export default function App(): JSX.Element {
     if (!nav) return
     const place = (): void => {
       const active = nav.querySelector<HTMLElement>('.nav-item.active')
-      setNavMark(active && active.offsetHeight ? { top: active.offsetTop, left: active.offsetLeft, width: active.offsetWidth, height: active.offsetHeight } : null)
+      // An item inside the collapsed "More tools" keeps its box while folded away: no highlight then.
+      const shown = active && active.offsetHeight && !active.closest('details:not([open])')
+      setNavMark(active && shown ? { top: active.offsetTop, left: active.offsetLeft, width: active.offsetWidth, height: active.offsetHeight } : null)
     }
     place()
     const ro = new ResizeObserver(place)
     ro.observe(nav)
     nav.querySelectorAll('.nav-group, .nav-more').forEach((el) => ro.observe(el))
-    return () => ro.disconnect()
+    nav.addEventListener('toggle', place, true)
+    return () => { ro.disconnect(); nav.removeEventListener('toggle', place, true) }
   }, [tab, isLj, lang])
 
   return (
@@ -4984,42 +5104,16 @@ export default function App(): JSX.Element {
           })()}
         </nav>
         <div className="stack side-panel" style={{ gap: 10 }}>
-          <div className="side-tools">
-          <button className="btn ghost sm" onClick={() => void refresh()}>{t('side.rescan')}</button>
-          <button
-            className="btn ghost sm"
-            title={t('side.copyTitle')}
-            onClick={() => {
-              const lines = [
-                `Stick Labs v${appVersion ?? '?'} ${new Date().toISOString()}`,
-                `connected=${connected} model=${model?.id ?? 'none'} pid=${pid !== null ? '0x' + pid.toString(16) : 'none'} fw=${info?.firmware ?? 'none'}`,
-                ...candidates.map(
-                  (c) => `cand pid=0x${c.productId.toString(16)} live=${c.live} preferred=${c.preferred} product=${c.product ?? '?'}`
-                )
-              ]
-              const text = lines.join('\n')
-              try {
-                void navigator.clipboard.writeText(text).then(
-                  () => setMsg('Diagnostics copied — paste it to RealKiyoshi.'),
-                  () => setMsg(text)
-                )
-              } catch {
-                setMsg(text)
-              }
-            }}
-          >
-            {t('side.copy')}
-          </button>
-          </div>
-          {!connected && primaryCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} connecting={connectingPath === c.path} />)}
-          {!connected && otherCandidates.length > 0 && (
-            <details className="candidate-more">
-              <summary>{t('side.otherControllers')} <span className="pill">{otherCandidates.length}</span></summary>
-              <div className="stack">
-                {otherCandidates.map((c) => <CandidateButton key={c.path} candidate={c} displayName={leadjoyDetectedNames[c.path]} onConnect={(path) => void connect(path)} connecting={connectingPath === c.path} />)}
-              </div>
-            </details>
-          )}
+          <SideDeviceCard
+            pad={isHs ? 'HyperStrike' : connected && model ? pictureKey(model.id, isLj ? leadjoyDetectedNames[ljPath ?? ''] : null) : null}
+            name={isHs ? 'HyperStrike' : connected ? (isLj ? leadjoyDetectedNames[ljPath ?? ''] ?? model?.marketingName : model?.marketingName) ?? modelId : null}
+            detail={isHs && hsSnap
+              ? `P${hsSnap.profile} · ${t('side.firmware')} ${hsSnap.device.firmware || '—'}`
+              : connected
+                ? `${isLj ? ['Main', 'Sub1', 'Sub2'][ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`}${info?.firmware ? ` · ${t('side.firmware')} ${info.firmware}` : ''}`
+                : null}
+            live={isHs || isLj ? ljLive : connected ? live : null}
+          />
           {connected && (
             <button
               className="btn ghost sm side-disconnect"
@@ -5067,43 +5161,49 @@ export default function App(): JSX.Element {
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t('side.by')}</span>
           </div>
           <UpdateRow />
-          <div className="creator-links">
-            <button
-              type="button"
-              className="creator-link creator-youtube"
-              title="YouTube @realkiyoshi"
-              aria-label="YouTube @realkiyoshi"
-              onClick={() => void api().openExternal('https://www.youtube.com/@realkiyoshi').catch(() => undefined)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.1a3 3 0 0 0-2.1-2.2C19 4.4 12 4.4 12 4.4s-7 0-8.9.5A3 3 0 0 0 1 7.1a31 31 0 0 0-.5 4.9 31 31 0 0 0 .5 4.9 3 3 0 0 0 2.1 2.2c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.2 31 31 0 0 0 .5-4.9 31 31 0 0 0-.5-4.9Z"/><path fill="var(--bg-1)" d="m9.7 15.5 6-3.5-6-3.5Z"/></svg>
-              <span>YouTube</span>
-            </button>
-            <button
-              type="button"
-              className="creator-link creator-x"
-              title="X @realkiyoshii"
-              aria-label="X @realkiyoshii"
-              onClick={() => void api().openExternal('https://x.com/realkiyoshii').catch(() => undefined)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.3l7.9-9L.8 2h6.5l4.5 6.7L18.9 2Zm-1.1 18h1.7L6.3 3.9H4.5L17.8 20Z"/></svg>
-            </button>
-            <button
-              type="button"
-              className="creator-link creator-coffee"
-              title="Support me on Buy Me a Coffee"
-              aria-label="Support RealKiyoshi on Buy Me a Coffee"
-              onClick={() => void api().openExternal('https://buymeacoffee.com/RealKiyoshi').catch(() => undefined)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 8h12v8a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8Zm12 1h1a3 3 0 1 1 0 6h-1M8 3v2m4-2v2m4-2v2M3 22h17"/></svg>
-              <span>{t('side.support')}</span>
-            </button>
-          </div>
         </div>
       </aside>
       <main className="main">
         <header className="topbar">
           <div className="row" style={{ gap: 12 }}>
             <h2>Stick Labs</h2>
+            <button type="button" className="btn sm topbar-rescan" title={t('side.rescan')} onClick={(e) => { const b = e.currentTarget; b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); void refresh() }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></svg>
+              <span>{t('side.rescan')}</span>
+            </button>
+            <div className="creator-links topbar-links">
+              <button
+                type="button"
+                className={`creator-link creator-youtube${ytLive.live ? ' live' : ''}`}
+                title={ytLive.live ? t('yt.watchLive') : 'YouTube @realkiyoshi'}
+                aria-label={ytLive.live ? t('yt.watchLive') : 'YouTube @realkiyoshi'}
+                onClick={() => void api().openExternal(ytLive.url ?? YT_CHANNEL_URL).catch(() => undefined)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.1a3 3 0 0 0-2.1-2.2C19 4.4 12 4.4 12 4.4s-7 0-8.9.5A3 3 0 0 0 1 7.1a31 31 0 0 0-.5 4.9 31 31 0 0 0 .5 4.9 3 3 0 0 0 2.1 2.2c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.2 31 31 0 0 0 .5-4.9 31 31 0 0 0-.5-4.9Z"/><path fill="var(--bg-1)" d="m9.7 15.5 6-3.5-6-3.5Z"/></svg>
+                <span>YouTube</span>
+                {ytLive.live && <span className="live-badge">{t('yt.live')}</span>}
+              </button>
+              <button
+                type="button"
+                className="creator-link creator-x"
+                title="X @realkiyoshii"
+                aria-label="X @realkiyoshii"
+                onClick={() => void api().openExternal('https://x.com/realkiyoshii').catch(() => undefined)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.3l7.9-9L.8 2h6.5l4.5 6.7L18.9 2Zm-1.1 18h1.7L6.3 3.9H4.5L17.8 20Z"/></svg>
+                <span>X</span>
+              </button>
+              <button
+                type="button"
+                className="creator-link creator-coffee"
+                title="Donate on Buy Me a Coffee"
+                aria-label="Donate to RealKiyoshi on Buy Me a Coffee"
+                onClick={() => void api().openExternal('https://buymeacoffee.com/RealKiyoshi').catch(() => undefined)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 8h12v8a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8Zm12 1h1a3 3 0 1 1 0 6h-1M8 3v2m4-2v2m4-2v2M3 22h17"/></svg>
+                <span>{t('side.support')}</span>
+              </button>
+            </div>
           </div>
           <div className="row" style={{ gap: 8 }}>
             {isHs && hsSnap && [1, 2, 3, 4].map((s) => (
@@ -5156,6 +5256,7 @@ export default function App(): JSX.Element {
             )}
           </div>
         </header>
+        {!connected && !hsSnap && <ConnectDrop candidates={primaryCandidates} names={leadjoyDetectedNames} connectingPath={connectingPath} onConnect={(path) => void connect(path)} />}
         <div className="content">
           <div className="content-frame" ref={frameRef}>
           {err && <div className="note bad">{err}</div>}
@@ -5170,7 +5271,30 @@ export default function App(): JSX.Element {
             <HsPages tab={tab} snap={hsSnap} draft={hsDraft} setDraft={setHsDraft} which={which} busy={hsBusy} live={ljLive} editors={hsCurveEditors} onEditorChange={(key, d) => setHsCurveEditors((prev) => ({ ...prev, [key]: d }))} />
           </>}
           {!connected && !hsSnap && (
-            <div className="msg"><h3>{t('msg.connect')}</h3><p>{t('msg.models')} {t('msg.connectBody')}</p></div>
+            <div className="msg"><h3>{t('msg.connect')}</h3><p>{t('msg.connectBody')}</p><button type="button" className="btn connect-rescan" onClick={() => void refresh()}>{t('side.rescan')}</button></div>
+          )}
+          {!connected && !hsSnap && tab === 'overview' && (
+            <section className="supported-pads">
+              <h3>{t('overview.supported')}</h3>
+              <div className="supported-grid">
+                {SUPPORTED_PADS.map((p) => (
+                  <div key={p.key} className="supported-pad">
+                    <ControllerArt pad={p.key} />
+                    <span>{p.name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="pad-request">
+                <div>
+                  <strong>{t('overview.requestTitle')}</strong>
+                  <p>{t('overview.requestBody')}</p>
+                </div>
+                <button type="button" className="btn" onClick={() => void api().openExternal('https://x.com/realkiyoshii').catch(() => undefined)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3L12 14.6 5.5 22H2.3l7.9-9L.8 2h6.5l4.5 6.7L18.9 2Zm-1.1 18h1.7L6.3 3.9H4.5L17.8 20Z"/></svg>
+                  {t('overview.requestX')}
+                </button>
+              </div>
+            </section>
           )}
           {isLj && (
             <>
@@ -5200,7 +5324,7 @@ export default function App(): JSX.Element {
                     const z = ljCurveZones(toPairs(ljDraft.sticks[s] ?? ljPadGrid(s)))
                     return { begin: z.start, end: z.end, beginAnti: z.antiStart }
                   })}
-                /><LjOuterCard points={pts} onChange={(next) => stageLjStick(side, next)} /><LjShapeCard shape={ljDraft.shapes[side] ?? ljPadShape(side)} busy={ljBusy} onChange={(code) => stageLjShape(side, code)} /></div><div className="stack stick-clean-controls"><LjZonesCard points={pts} onChange={(next) => stageLjStick(side, next)} /></div></div>
+                /><LjOuterCard points={pts} onChange={(next) => stageLjStick(side, next)} /><LjShapeCard shape={ljDraft.shapes[side] ?? ljPadShape(side)} busy={ljBusy} onChange={(code) => stageLjShape(side, code)} /></div><div className="stack stick-clean-controls"><LjZonesCard points={pts} live={ljLive ? (side === 0 ? { x: ljLive.lx, y: ljLive.ly } : { x: ljLive.rx, y: ljLive.ry }) : null} onChange={(next) => stageLjStick(side, next)} /></div></div>
                 </>
               })()}
               {ljSnap && tab === 'device' && (
@@ -5357,26 +5481,22 @@ export default function App(): JSX.Element {
                     )}
                     </div>
                   </section></div>
-                  <div className="stack stick-clean-controls"><div className="card stick-primary-card">
-                    <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.inputLabel')}</span><h3>{t('sticks.inputTitle')}</h3></div><span className="pill">0.1%</span></div>
-                    <p className="stick-intro">{t('sticks.inputHelp')}</p>
-                    <div className="stick-primary-sliders">
-                      <Slider label={t('sticks.innerLabel')} value={dz.begin / 10} min={0} max={20} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label={t('sticks.outerLabel')} value={dz.end / 10} min={10} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), end: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                    </div>
-
-                  </div><div className="card stick-output-card"><div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.outputLabel')}</span><h3>{t('sticks.outputTitle')}</h3></div></div><p className="stick-intro">{t('sticks.outputHelp')}</p>                    <div className="stack" style={{ gap: 12, marginTop: 8 }}>
-                      <Slider label={t('sticks.floorLabel')} value={dz.beginAnti / 10} min={0} max={50} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), beginAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                      <Slider label={t('sticks.ceilingLabel')} value={dz.endAnti / 10} min={50} max={100} step={0.1} unit="%" onChange={(v) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), endAnti: Math.round(v * 10) }))} format={(v) => `${v.toFixed(1)}%`} />
-                    </div>
-                    <div className="axis-scale">
-                      <Slider label={t('sticks.axisScale')} value={stick.axisScale(pkt)} min={0} max={100} step={1} disabled={!AXIS_SCALE_VERIFIED} onChange={(v) => edit(() => stick.setAxisScale(pkt, which === 0 ? 0 : 1, v))}
-                        format={(v) => v === 50 ? t('sticks.axisBalanced') : `${v} · ${t(v < 50 ? 'sticks.axisHorizontal' : 'sticks.axisVertical')}`} />
-                      <div className="row spread axis-scale-ends"><span>{t('sticks.axisHorizontal')}</span><span>{t('sticks.axisVertical')}</span></div>
-                      <p className="stick-intro">{t(AXIS_SCALE_VERIFIED ? 'sticks.axisScaleHint' : 'sticks.axisScalePending')}</p>
-                      {AXIS_SCALE_VERIFIED && stick.axisScale(pkt) !== 50 && <button type="button" className="btn sm ghost" onClick={() => edit(() => stick.setAxisScale(pkt, which === 0 ? 0 : 1, 50))}>{t('sticks.axisReset')}</button>}
-                    </div>
-</div></div>
+                  <div className="stack stick-clean-controls">{dz && pkt && <DeadzoneCards
+                    zones={{ start: dz.begin, end: dz.end, floor: dz.beginAnti, ceiling: dz.endAnti }}
+                    limits={{ start: [0, 200], end: [100, 1000], floor: [0, 500], ceiling: [500, 1000] }}
+                    live={live ? (which === 0 ? { x: live.lx, y: live.ly } : { x: live.rx, y: live.ry }) : null}
+                    inputClass="card stick-primary-card"
+                    onChange={(z) => edit(() => stick.setDeadzone(pkt, { ...stick.deadzone(pkt), begin: z.start, end: z.end, beginAnti: z.floor, endAnti: z.ceiling }))}
+                    outputExtra={<>
+                      <div className="axis-scale">
+                        <Slider label={t('sticks.axisScale')} value={stick.axisScale(pkt)} min={0} max={100} step={1} disabled={!AXIS_SCALE_VERIFIED} onChange={(v) => edit(() => stick.setAxisScale(pkt, which === 0 ? 0 : 1, v))}
+                          format={(v) => v === 50 ? t('sticks.axisBalanced') : `${v} · ${t(v < 50 ? 'sticks.axisHorizontal' : 'sticks.axisVertical')}`} />
+                        <div className="row spread axis-scale-ends"><span>{t('sticks.axisHorizontal')}</span><span>{t('sticks.axisVertical')}</span></div>
+                        <p className="stick-intro">{t(AXIS_SCALE_VERIFIED ? 'sticks.axisScaleHint' : 'sticks.axisScalePending')}</p>
+                        {AXIS_SCALE_VERIFIED && stick.axisScale(pkt) !== 50 && <button type="button" className="btn sm ghost" onClick={() => edit(() => stick.setAxisScale(pkt, which === 0 ? 0 : 1, 50))}>{t('sticks.axisReset')}</button>}
+                      </div>
+                    </>}
+                  />}</div>
                 </div>
               </>}
               {tab === 'curves' && <div className="curves-workspace">
@@ -5651,10 +5771,16 @@ export default function App(): JSX.Element {
             <div className="row wrap" style={{ gap: 10 }}><button type="button" className="btn" disabled={busy || locked || calibrationRunning} onClick={stageCleanProfile}>{t('clean.action')}</button>{freshUndo?.path === connPath && freshUndo?.slot === slot && freshUndo?.model === modelId && <button type="button" className="btn ghost" disabled={busy || calibrationRunning} onClick={undoCleanProfile}>{t('clean.undo')}</button>}</div>
           </section>}
           {tab === 'overview' && connected && profile && !isLj && (
-            <OverviewPanel profile={profile} slot={slot} firmware={info?.firmware ?? null} modelName={model?.marketingName ?? modelId} onOpen={(next) => setTab(next)} />
+            <OverviewPanel profile={profile} slot={slot} firmware={info?.firmware ?? null} modelId={modelId} modelName={model?.marketingName ?? modelId} onOpen={(next) => setTab(next)} />
           )}
           {tab === 'overview' && connected && isLj && (
-            <div className="msg"><h3>{t('overview.connectTitle')}</h3><p>{t('overview.connectBody')}</p></div>
+            <div className="overview">
+              <div className="overview-hero">
+                <div className="tuning-page-heading"><h2>{model?.marketingName ?? modelId}</h2></div>
+                <ControllerArt pad={pictureKey(modelId, leadjoyDetectedNames[ljPath ?? ''])} />
+              </div>
+              <div className="msg"><h3>{t('overview.connectTitle')}</h3><p>{t('overview.connectBody')}</p></div>
+            </div>
           )}
           {tab === 'shift' && connected && profile && !isLj && ['G7ProCE', 'T3CE'].includes(modelId) && (
             <ShiftLayerPanel
@@ -5822,24 +5948,29 @@ function ThemePanel(): JSX.Element {
     <div className="card" style={{ marginTop: 16 }}>
       <h3>{t('theme.title')}</h3>
       <Hint>{t('theme.hint')}</Hint>
-      <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
-        {THEMES.map((o) => (
-          <button
-            key={o.id}
-            className={`choice-btn${theme === o.id ? ' active' : ''}`}
-            onClick={() => setTheme(o.id)}
-          >
-            <span className="row" style={{ gap: 6, alignItems: 'center' }}>
-              <span style={{ display: 'inline-flex', gap: 3 }}>
-                {[o.vars['--bg-2'] ?? '#000', o.vars['--accent'] ?? '#888', o.vars['--good'] ?? '#888'].map((c) => (
-                  <span key={c} style={{ width: 12, height: 12, borderRadius: '50%', background: c, border: '1px solid var(--line-2)' }} />
-                ))}
-              </span>
-              {o.label}
-            </span>
-          </button>
-        ))}
-      </div>
+      {THEME_CATEGORIES.map((cat) => (
+        <div key={cat} className="theme-group">
+          <div className="theme-group-label">{t(`theme.cat.${cat}`)}</div>
+          <div className="row wrap" style={{ gap: 8 }}>
+            {THEMES.filter((o) => o.category === cat).map((o) => (
+              <button
+                key={o.id}
+                className={`choice-btn${theme === o.id ? ' active' : ''}`}
+                onClick={() => setTheme(o.id)}
+              >
+                <span className="row" style={{ gap: 6, alignItems: 'center' }}>
+                  <span style={{ display: 'inline-flex', gap: 3 }}>
+                    {[o.vars['--bg-2'] ?? '#000', o.vars['--accent'] ?? '#888', o.vars['--good'] ?? '#888'].map((c) => (
+                      <span key={c} style={{ width: 12, height: 12, borderRadius: '50%', background: c, border: '1px solid var(--line-2)' }} />
+                    ))}
+                  </span>
+                  {o.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

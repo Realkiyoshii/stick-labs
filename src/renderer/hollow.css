@@ -1,0 +1,195 @@
+/* ---------------------------------------------------------------------------
+   Hollow Knight skin — the "hollow" theme in theme.ts sets data-skin on <html>.
+   Hallownest at night: blue-black depths, slow drifting fog, pale soul motes
+   rising, thin silver frames with curled corners, a serif title face, and the
+   menu's fleur pointers framing the picked item. Built in CSS, no game assets.
+   --------------------------------------------------------------------------- */
+
+[data-skin='hollow'] {
+  --h-pale: #e8ecf2;
+  --h-soul: rgba(196, 220, 255, 0.9);
+  --h-frame: rgba(232, 236, 242, 0.32);
+  --h-glow: 0 0 14px rgba(170, 200, 255, 0.28);
+  --soft-line: rgba(232, 236, 242, 0.2);
+  --h-serif: 'Perpetua Titling MT', 'Trajan Pro', 'Cinzel', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  --h-body: 'Palatino Linotype', 'Book Antiqua', Georgia, 'Segoe UI', serif;
+  /* Ornaments drawn inline: a curled frame corner, the title divider, the menu fleur. */
+  --h-corner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23e8ecf2' stroke-width='1.2' stroke-linecap='round'%3E%3Cpath d='M3 37V14C3 8 8 3 14 3h23'/%3E%3Cpath d='M14 3c-4 3-3 8 1 8 3 0 3-4 0-4' opacity='.8'/%3E%3Cpath d='M3 14c3-4 8-3 8 1 0 3-4 3-4 0' opacity='.8'/%3E%3C/g%3E%3Ccircle cx='3' cy='37' r='1.6' fill='%23e8ecf2'/%3E%3Ccircle cx='37' cy='3' r='1.6' fill='%23e8ecf2'/%3E%3C/svg%3E");
+  --h-corner-br: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg transform='rotate(180 20 20)'%3E%3Cg fill='none' stroke='%23e8ecf2' stroke-width='1.2' stroke-linecap='round'%3E%3Cpath d='M3 37V14C3 8 8 3 14 3h23'/%3E%3Cpath d='M14 3c-4 3-3 8 1 8 3 0 3-4 0-4' opacity='.8'/%3E%3Cpath d='M3 14c3-4 8-3 8 1 0 3-4 3-4 0' opacity='.8'/%3E%3C/g%3E%3Ccircle cx='3' cy='37' r='1.6' fill='%23e8ecf2'/%3E%3Ccircle cx='37' cy='3' r='1.6' fill='%23e8ecf2'/%3E%3C/g%3E%3C/svg%3E");
+  --h-divider: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 260 18'%3E%3Cg fill='none' stroke='%23e8ecf2' stroke-width='1.1' stroke-linecap='round'%3E%3Cpath d='M6 9h96M158 9h96'/%3E%3Cpath d='M102 9c6-7 14-7 18 0M158 9c-6-7-14-7-18 0'/%3E%3Cpath d='M102 9c6 7 14 7 18 0M158 9c-6 7-14 7-18 0' opacity='.6'/%3E%3C/g%3E%3Cpath d='M130 2l6 7-6 7-6-7z' fill='%23e8ecf2'/%3E%3Ccircle cx='4' cy='9' r='2' fill='%23e8ecf2'/%3E%3Ccircle cx='256' cy='9' r='2' fill='%23e8ecf2'/%3E%3C/svg%3E");
+  --h-fleur-l: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 16'%3E%3Cg fill='none' stroke='%23e8ecf2' stroke-width='1.2' stroke-linecap='round'%3E%3Cpath d='M2 8h12'/%3E%3Cpath d='M14 8c3-5 8-6 10-3-2 0-4 1-5 3 1 2 3 3 5 3-2 3-7 2-10-3z' fill='%23e8ecf2' fill-opacity='.85'/%3E%3C/g%3E%3C/svg%3E");
+  --h-fleur-r: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 16'%3E%3Cg fill='none' stroke='%23e8ecf2' stroke-width='1.2' stroke-linecap='round' transform='matrix(-1 0 0 1 26 0)'%3E%3Cpath d='M2 8h12'/%3E%3Cpath d='M14 8c3-5 8-6 10-3-2 0-4 1-5 3 1 2 3 3 5 3-2 3-7 2-10-3z' fill='%23e8ecf2' fill-opacity='.85'/%3E%3C/g%3E%3C/svg%3E");
+  font-family: var(--h-body);
+}
+
+/* The depths: a night gradient, two fog banks drifting, soul motes rising. */
+[data-skin='hollow'] body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 115%, rgba(70, 100, 160, 0.35), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 15% 0%, rgba(60, 80, 130, 0.25), transparent 70%),
+    linear-gradient(180deg, #0a0f1c 0%, #070a12 55%, #04060b 100%);
+  background-attachment: fixed;
+}
+[data-skin='hollow'] body::before {
+  content: '';
+  position: fixed;
+  inset: -20% -40%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 30% 18% at 20% 70%, rgba(150, 175, 230, 0.10), transparent 70%),
+    radial-gradient(ellipse 35% 20% at 70% 40%, rgba(150, 175, 230, 0.08), transparent 70%),
+    radial-gradient(ellipse 25% 14% at 50% 90%, rgba(170, 195, 240, 0.10), transparent 70%);
+  animation: hollow-fog 46s ease-in-out infinite alternate;
+}
+[data-skin='hollow'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, var(--h-soul) 0 1px, rgba(196, 220, 255, 0.25) 2px, transparent 3.5px),
+    radial-gradient(circle, rgba(196, 220, 255, 0.7) 0 1.4px, rgba(196, 220, 255, 0.2) 2.6px, transparent 5px),
+    radial-gradient(circle, rgba(196, 220, 255, 0.55) 0 0.8px, transparent 2px);
+  background-size: 230px 200px, 410px 300px, 130px 150px;
+  background-position: 40px 0, 190px 60px, 0 30px;
+  animation: hollow-souls 30s linear infinite, hollow-sway 7s ease-in-out infinite alternate;
+  opacity: 0.75;
+}
+@keyframes hollow-fog { from { transform: translateX(-6%); } to { transform: translateX(6%); } }
+@keyframes hollow-souls { to { background-position: 40px -600px, 190px -540px, 0 -570px; } }
+@keyframes hollow-sway { from { transform: translateX(-8px); } to { transform: translateX(8px); } }
+[data-skin='hollow'] .app { position: relative; z-index: 1; }
+[data-skin='hollow'] .app,
+[data-skin='hollow'] .main,
+[data-skin='hollow'] .content { background: transparent; }
+
+[data-skin='hollow'] ::selection { background: rgba(196, 220, 255, 0.3); color: #fff; }
+[data-skin='hollow'] ::-webkit-scrollbar { width: 8px; height: 8px; }
+[data-skin='hollow'] ::-webkit-scrollbar-track { background: transparent; }
+[data-skin='hollow'] ::-webkit-scrollbar-thumb { background: rgba(232, 236, 242, 0.18); border-radius: 4px; }
+[data-skin='hollow'] ::-webkit-scrollbar-thumb:hover { background: rgba(232, 236, 242, 0.35); }
+
+/* Titles: carved serif capitals, softly lit. */
+[data-skin='hollow'] h1,
+[data-skin='hollow'] h2,
+[data-skin='hollow'] h3 { font-family: var(--h-serif); font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: var(--h-pale); text-shadow: var(--h-glow); }
+[data-skin='hollow'] .tuning-page-heading { text-align: center; }
+[data-skin='hollow'] .tuning-page-heading h2 { font-size: 30px; letter-spacing: 0.22em; }
+[data-skin='hollow'] .tuning-page-heading h2::after { content: ''; display: block; width: 260px; max-width: 80%; height: 18px; margin: 10px auto 0; background: var(--h-divider) center / contain no-repeat; opacity: 0.85; }
+[data-skin='hollow'] .tuning-page-heading p { color: var(--text-2); font-style: italic; }
+[data-skin='hollow'] .card > h3 { border-left: 0; padding-left: 0; font-size: 14px; }
+[data-skin='hollow'] .supported-pads h3 { text-align: center; }
+[data-skin='hollow'] .supported-pads h3::after { content: ''; display: block; width: 200px; height: 14px; margin: 8px auto 0; background: var(--h-divider) center / contain no-repeat; opacity: 0.6; }
+
+/* Sidebar and top bar: dark glass with a thin silver edge. */
+[data-skin='hollow'] .sidebar { background: linear-gradient(180deg, rgba(10, 14, 26, 0.92), rgba(5, 7, 13, 0.95)); border-right: 1px solid var(--h-frame); box-shadow: 1px 0 0 rgba(0, 0, 0, 0.6), 6px 0 30px rgba(0, 0, 0, 0.5); }
+[data-skin='hollow'] .brand h1,
+[data-skin='hollow'] .brand h1 span { font-family: var(--h-serif); color: var(--h-pale); letter-spacing: 0.18em; text-shadow: var(--h-glow); }
+[data-skin='hollow'] .brand-mark { color: var(--h-pale); filter: drop-shadow(0 0 6px rgba(170, 200, 255, 0.4)); }
+[data-skin='hollow'] .topbar { background: linear-gradient(180deg, rgba(10, 14, 26, 0.85), rgba(10, 14, 26, 0.5)); border-bottom: 1px solid var(--h-frame); }
+[data-skin='hollow'] .topbar h2 { font-size: 16px; letter-spacing: 0.3em; }
+[data-skin='hollow'] .status-bar { background: transparent; border-top: 1px solid var(--soft-line); }
+
+/* Menu: no box — the picked item glows and is framed by two fleurs. */
+[data-skin='hollow'] .nav-mark {
+  border-radius: 0;
+  box-shadow: none;
+  background:
+    var(--h-fleur-l) left 2px center / 22px 14px no-repeat,
+    var(--h-fleur-r) right 2px center / 22px 14px no-repeat,
+    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(170, 200, 255, 0.14), transparent 75%);
+  filter: drop-shadow(0 0 4px rgba(170, 200, 255, 0.5));
+  animation: hollow-fleur 2.8s ease-in-out infinite;
+}
+@keyframes hollow-fleur { 50% { filter: drop-shadow(0 0 9px rgba(170, 200, 255, 0.75)); } }
+[data-skin='hollow'] .nav-item { border-radius: 0; color: var(--text-2); font-family: var(--h-serif); letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px; padding-left: 30px; transition: color 0.25s, text-shadow 0.25s; }
+[data-skin='hollow'] .nav-item:hover { background: transparent; color: var(--h-pale); text-shadow: var(--h-glow); }
+[data-skin='hollow'] .nav-item.active { color: #fff; text-shadow: 0 0 10px rgba(190, 215, 255, 0.7); }
+[data-skin='hollow'] .nav-item.active .nav-icon { color: var(--h-pale); }
+[data-skin='hollow'] .nav-group-label,
+[data-skin='hollow'] .nav-more summary { font-family: var(--h-serif); letter-spacing: 0.2em; color: var(--text-3); }
+
+/* Panels: dark glass in a thin silver frame with curled corners. */
+[data-skin='hollow'] .card,
+[data-skin='hollow'] .msg,
+[data-skin='hollow'] .overview-tile,
+[data-skin='hollow'] .supported-pad,
+[data-skin='hollow'] .pad-request,
+[data-skin='hollow'] .saved-curve-card,
+[data-skin='hollow'] .stick-card,
+[data-skin='hollow'] .review-dialog {
+  border: 1px solid var(--h-frame);
+  border-radius: 2px;
+  background:
+    var(--h-corner) top 5px left 5px / 34px 34px no-repeat,
+    var(--h-corner-br) bottom 5px right 5px / 34px 34px no-repeat,
+    linear-gradient(180deg, rgba(16, 22, 38, 0.82), rgba(8, 11, 20, 0.88));
+  box-shadow: inset 0 0 0 4px rgba(4, 6, 11, 0.6), inset 0 0 0 5px rgba(232, 236, 242, 0.07), 0 18px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+}
+[data-skin='hollow'] .overview-tile,
+[data-skin='hollow'] .supported-pad { transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s; }
+[data-skin='hollow'] .overview-tile:hover,
+[data-skin='hollow'] .supported-pad:hover { border-color: rgba(232, 236, 242, 0.6); transform: translateY(-3px); box-shadow: inset 0 0 0 4px rgba(4, 6, 11, 0.6), inset 0 0 0 5px rgba(232, 236, 242, 0.12), 0 0 26px rgba(150, 185, 255, 0.18), 0 18px 40px rgba(0, 0, 0, 0.45); }
+[data-skin='hollow'] .overview-tile-icon { border-radius: 50%; background: rgba(170, 200, 255, 0.08); border: 1px solid var(--h-frame); color: var(--h-pale); box-shadow: var(--h-glow); }
+[data-skin='hollow'] .overview-tile-label { font-family: var(--h-serif); letter-spacing: 0.12em; text-transform: uppercase; font-size: 11px; }
+[data-skin='hollow'] .supported-pad span { font-family: var(--h-serif); letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }
+[data-skin='hollow'] .pad-request { border-style: solid; }
+
+/* Controls: hairline silver, serif capitals; hover breathes a soul glow. */
+[data-skin='hollow'] .btn,
+[data-skin='hollow'] .choice-btn,
+[data-skin='hollow'] .creator-link,
+[data-skin='hollow'] .remap-filter button,
+[data-skin='hollow'] .remap-capture-choice {
+  border-radius: 2px;
+  border: 1px solid var(--h-frame);
+  background: rgba(10, 14, 26, 0.7);
+  color: var(--h-pale);
+  font-family: var(--h-serif);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: box-shadow 0.3s, border-color 0.3s, background 0.3s, text-shadow 0.3s;
+}
+[data-skin='hollow'] .btn:hover:not(:disabled),
+[data-skin='hollow'] .choice-btn:hover:not(:disabled),
+[data-skin='hollow'] .creator-link:hover,
+[data-skin='hollow'] .remap-filter button:hover,
+[data-skin='hollow'] .remap-capture-choice:hover:not(:disabled) { border-color: rgba(232, 236, 242, 0.7); background: rgba(40, 55, 90, 0.45); box-shadow: 0 0 16px rgba(150, 185, 255, 0.3); text-shadow: var(--h-glow); color: #fff; }
+[data-skin='hollow'] .choice-btn.active,
+[data-skin='hollow'] .remap-filter button.active,
+[data-skin='hollow'] .remap-source.selected { border-color: var(--h-pale); background: rgba(232, 236, 242, 0.12); color: #fff; box-shadow: 0 0 18px rgba(170, 200, 255, 0.3), inset 0 0 12px rgba(170, 200, 255, 0.12); }
+[data-skin='hollow'] .choice-btn.active * { color: #fff; }
+[data-skin='hollow'] .creator-youtube svg,
+[data-skin='hollow'] .creator-coffee svg { color: currentColor; }
+[data-skin='hollow'] .topbar-links .creator-coffee { border-color: rgba(232, 236, 242, 0.7); background: rgba(232, 236, 242, 0.1); box-shadow: 0 0 14px rgba(170, 200, 255, 0.22); }
+[data-skin='hollow'] .sidebar .btn { font-size: 10px; letter-spacing: 0.04em; padding-left: 6px; padding-right: 6px; }
+
+[data-skin='hollow'] .stick-card.active { border-color: var(--h-pale); box-shadow: inset 0 0 0 4px rgba(4, 6, 11, 0.6), 0 0 22px rgba(170, 200, 255, 0.25); }
+[data-skin='hollow'] .stick-card.active .stick-card-icon .stick-cap { fill: var(--h-pale); stroke: var(--h-pale); filter: drop-shadow(0 0 4px rgba(190, 215, 255, 0.8)); }
+[data-skin='hollow'] .stick-card.active .stick-card-icon .stick-letter { fill: #0b0f1a; }
+
+[data-skin='hollow'] .pill,
+[data-skin='hollow'] .key-chip { border-radius: 2px; border: 1px solid var(--h-frame); background: rgba(10, 14, 26, 0.6); color: var(--h-pale); }
+[data-skin='hollow'] .input,
+[data-skin='hollow'] input,
+[data-skin='hollow'] select,
+[data-skin='hollow'] textarea { border-radius: 2px; border: 1px solid var(--h-frame); background: rgba(6, 9, 16, 0.8); color: var(--h-pale); }
+
+/* Controller photos: cooled to the cave light, with a faint halo. */
+[data-skin='hollow'] .controller-photo::before { background: radial-gradient(closest-side, rgba(150, 185, 255, 0.16), transparent); }
+[data-skin='hollow'] .controller-photo img { filter: saturate(0.55) brightness(0.92) hue-rotate(-8deg) drop-shadow(0 0 14px rgba(150, 185, 255, 0.22)); transition: filter 0.5s; }
+[data-skin='hollow'] .supported-pad:hover .controller-photo img { filter: saturate(1) brightness(1) drop-shadow(0 0 18px rgba(170, 200, 255, 0.35)); }
+
+/* Page change: rise out of the dark, like walking into a new area. */
+[data-skin='hollow'] .page-enter { animation: hollow-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes hollow-rise { from { opacity: 0; filter: blur(6px) brightness(0.4); transform: translateY(10px) scale(0.99); } to { opacity: 1; filter: none; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skin='hollow'] body::before,
+  [data-skin='hollow'] body::after,
+  [data-skin='hollow'] .nav-mark,
+  [data-skin='hollow'] .page-enter { animation: none; }
+}

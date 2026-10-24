@@ -23,6 +23,7 @@ import type { LabApi, LiveSample } from '../renderer/api'
 import { WebHidTransport, discoverWeb, isGameSirPath, openHsPort, openLjPort } from './hid'
 import { createLjApi, createLjSession } from '@shared/leadjoy-session'
 import { createHsSession, type HsCalStep, type HsCalType, type HsEdit } from '@shared/hyperstrike'
+import { YT_OFFLINE, YT_STATUS_URL, parseLiveStatus } from '@shared/youtubeLive'
 
 const leadjoyApi = createLjApi(createLjSession(openLjPort))
 // Same HyperStrike session as the desktop (shared/hyperstrike.ts) over a WebHID port.
@@ -168,6 +169,11 @@ const basis = {
     return Promise.resolve(true)
   },
   version: () => Promise.resolve(`${__APP_VERSION__} web`),
+  // Browsers can't read YouTube, so use the status the youtube-live workflow publishes.
+  youtubeLive: () => fetch(`${YT_STATUS_URL}?t=${Date.now()}`, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then(parseLiveStatus)
+    .catch(() => YT_OFFLINE),
   // A hosted page is always the latest build; there is nothing to download.
   updateStatus: () => Promise.resolve({ state: 'current' as const, version: __APP_VERSION__ }),
   updateCheck: () => Promise.resolve(true),
