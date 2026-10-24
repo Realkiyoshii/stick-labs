@@ -20,14 +20,17 @@ import { Controller } from '../main/controller'
 import type { DeepPollResult } from '@shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '@shared/leadjoy'
 import type { LabApi, LiveSample } from '../renderer/api'
-import { WebHidTransport, discoverWeb, isGameSirPath, openHsPort, openLjPort } from './hid'
+import { WebHidTransport, discoverWeb, isGameSirPath, openFdPort, openHsPort, openLjPort } from './hid'
 import { createLjApi, createLjSession } from '@shared/leadjoy-session'
 import { createHsSession, type HsCalStep, type HsCalType, type HsEdit } from '@shared/hyperstrike'
+import { createFdSession, type FdEdit } from '@shared/flydigi'
 import { YT_OFFLINE, YT_STATUS_URL, parseLiveStatus } from '@shared/youtubeLive'
 
 const leadjoyApi = createLjApi(createLjSession(openLjPort))
 // Same HyperStrike session as the desktop (shared/hyperstrike.ts) over a WebHID port.
 const hyperstrike = createHsSession(openHsPort)
+// Same Flydigi session as the desktop (shared/flydigi.ts) over a WebHID port.
+const flydigi = createFdSession(openFdPort)
 
 /** Injected by vite.web.config.ts from package.json. */
 declare const __APP_VERSION__: string
@@ -185,6 +188,9 @@ const basis = {
   ping: () => Promise.reject(new Error(NOT_IN_BROWSER)),
   deeppoll: () => Promise.reject(new Error(NOT_IN_BROWSER)) as Promise<DeepPollResult>,
   hyperstrikeRead: (path: string) => hyperstrike.readSnapshot(path),
+  flydigiRead: (path: string) => flydigi.readSnapshot(path),
+  flydigiWrite: (path: string, edit: FdEdit) => flydigi.writeVerified(path, edit),
+  flydigiLive: (path: string) => Promise.resolve(flydigi.liveSample(path)),
   hyperstrikeWrite: (path: string, edit: HsEdit) => hyperstrike.writeVerified(path, edit),
   hyperstrikeSwitch: (path: string, index: number) => hyperstrike.switchProfile(path, index),
   hyperstrikeCalibrate: (path: string, step: HsCalStep, type: HsCalType) => hyperstrike.calibrate(path, step, type),

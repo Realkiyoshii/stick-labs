@@ -34,6 +34,7 @@ import { createPortal, flushSync } from 'react-dom'
 import { LANGS, LangContext, tr, useLangState, useT } from './i18n'
 import { THEMES, THEME_CATEGORIES, ThemeContext, useThemeState } from './theme'
 import type { DeepPollResult } from '@shared/deeppoll'
+import { FD_KEY_KEYBOARD, FD_KEY_MACRO, FD_KEY_SELF, FD_LINEAR, FD_POINTS, FD_PRESET_P1, FD_REMAPPABLE, FD_SENSITIVITY, FD_TARGETS, FdKey, fdBuildCurve, fdFromPoints, fdToPoints, fdZones, type FdEdit, type FdHardwareEdit, type FdSnapshot, type FdStick } from '@shared/flydigi'
 import { firmwareAtLeast, hsNormalizeCurve, HS_POLLING_HZ, HS_USB_MODES, HS_CLAMP, HS_CURVE_MAX, HS_CURVE_POINTS, HS_INVERT, HS_OVERSAMPLING, HS_PRESETS, HS_SPEED_STRENGTH, planWrites, type HsEdit, type HsSnapshot } from '@shared/hyperstrike'
 import { LJ_HID_KEYS, LJ_MOUSE_BUTTONS, LJ_MAP_GAMEPAD, LJ_MAP_KEYBOARD, LJ_MAP_MOUSE, LJ_SHAPES, LJ_PHYSICAL, ljCurveZones, ljFitZones, ljLinearCurve, ljPercentToWire, ljSampleDesign, ljTargetLabel, type LjButtonTarget, type LjSnapshot, type LjStickZones, type LjTriggerZones } from '@shared/leadjoy'
 
@@ -642,6 +643,255 @@ const HS_OBJ_LABEL: Record<string, string> = {
 
 /** Keep a HyperStrike curve valid: outputs never fall, the last point stays at 1000. */
 const hsFixCurve = (points: Array<{ x: number; y: number }>): Array<[number, number]> => hsNormalizeCurve(points.map((p) => [p.x, p.y]))
+
+/** Staged Apex 5 edits, in the shared cards' form: 9 [x, y] points per stick on the 0..1000 grid. */
+interface FdDraft {
+  points: [Array<[number, number]>, Array<[number, number]>]
+  circular: [boolean, boolean]
+  /** Target byte per key id, as stored. */
+  keys: number[]
+  hw: Required<FdHardwareEdit>
+}
+
+const fdDraftFrom = (snap: FdSnapshot): FdDraft => ({
+  points: [fdToPoints(snap.sticks[0].curve), fdToPoints(snap.sticks[1].curve)],
+  circular: [snap.sticks[0].circular, snap.sticks[1].circular],
+  keys: [...snap.keys],
+  hw: {
+    stickDebounce: snap.hardware.stickDebounce.enabled,
+    autoCalibration: snap.hardware.autoCalibration.enabled,
+    rebound: snap.hardware.rebound.enabled,
+    stickBits: snap.hardware.stickBits ?? 12,
+    centerSensitivity: snap.hardware.centerSensitivity ?? 'Middle',
+    sleepMinutes: snap.hardware.sleepMinutes
+  }
+})
+
+/** What a draft would change, as the edit the session writes. */
+function fdPlan(snap: FdSnapshot, draft: FdDraft): { edit: FdEdit; labels: string[] } {
+  const labels: string[] = []
+  const edit: FdEdit = {}
+  const was = fdDraftFrom(snap)
+  const sticks = [0, 1].map((i): FdStick | null => {
+    const same = JSON.stringify(draft.points[i]) === JSON.stringify(was.points[i])
+    if (same && draft.circular[i] === was.circular[i]) return null
+    labels.push(i === 0 ? 'L' : 'R')
+    if (same) return { ...snap.sticks[i], circular: draft.circular[i] }
+    const curve = fdFromPoints(draft.points[i])
+    const z = fdZones(curve)
+    return { type: 'Custom', curve, circular: draft.circular[i], edge: z.full < 100 ? Math.round(100 - z.full) : curve[8] < 100 ? curve[8] - 100 : 0 }
+  }) as [FdStick | null, FdStick | null]
+  if (sticks[0] || sticks[1]) edit.sticks = sticks
+  const keys: Record<number, number> = {}
+  draft.keys.forEach((v, id) => { if (v !== was.keys[id]) keys[id] = v === FD_KEY_SELF ? id : v })
+  if (Object.keys(keys).length) { edit.keys = keys; labels.push(...Object.keys(keys).map((id) => `key${id}`)) }
+  const hw: FdHardwareEdit = {}
+  for (const k of Object.keys(draft.hw) as Array<keyof FdHardwareEdit>) {
+    if (draft.hw[k] !== was.hw[k]) { (hw as Record<string, unknown>)[k] = draft.hw[k]; labels.push(k) }
+  }
+  if (Object.keys(hw).length) edit.hardware = hw
+  return { edit, labels }
+}
+
+/** The Apex 5 reports at a fixed 1000 Hz over USB (no rate byte in its status). */
+const FD_WIRED_HZ = 1000
+
+/** Space Station's curve presets, as points for the shared preset list. */
+const FD_SS_CURVES = (['Default', 'Quick', 'Slow'] as const).map((type) => ({
+  key: `fd-${type}`,
+  type,
+  pts: fdToPoints(type === 'Default' ? FD_LINEAR : fdBuildCurve({ center: 0, edge: 0, p1: FD_PRESET_P1[type], p2: { x: 127, y: 127 } })).map(([x, y]) => ({ x, y }))
+}))
+
+/** Flydigi ControllerKey id → GameSir key value, for the shared labels and icons. */
+const FD_TO_GS: Partial<Record<number, number>> = { 0: 1, 2: 2, 3: 3, 1: 4, 10: 5, 11: 6, 14: 7, 15: 8, 4: 9, 5: 10, 7: 11, 8: 12, 27: 13, 6: 14, 9: 15, 12: 19, 13: 20 }
+/** GameSir value → Flydigi target, only for outputs the Apex 5 can press (Home is a label, not a target). */
+const FD_FROM_GS = new Map(FD_TARGETS.map((k) => [FD_TO_GS[FdKey[k]] as number, FdKey[k] as number]))
+
+/** Buttons for the Apex 5: the shared remap page; M1–M6 are its 4 back paddles and 2 extra bumpers. */
+function FdButtonsPage({ snap, draft, setDraft, busy }: { snap: FdSnapshot; draft: FdDraft; setDraft: (next: FdDraft) => void; busy: boolean }): JSX.Element {
+  const t = useT()
+  const options = [
+    { value: 0, label: t('buttons.unmapped') },
+    ...FD_TARGETS.map((k) => ({ value: FD_TO_GS[FdKey[k]] as number, label: keyLabel(FD_TO_GS[FdKey[k]] as number) }))
+  ]
+  const KEYBOARD = -1
+  const getLabel = (v: number): string => (v === KEYBOARD ? t('fd.keyboardBind') : options.find((o) => o.value === v)?.label ?? t('buttons.unmapped'))
+  const renderIcon = (v: number): JSX.Element | null => (v === KEYBOARD ? <MappingTypeIcon type="keyboard" /> : v > 0 ? <KeyIcon value={v} size={28} /> : null)
+  const rows = FD_REMAPPABLE.map((name) => {
+    const id = FdKey[name]
+    const raw = draft.keys[id]
+    const gsSelf = FD_TO_GS[id]
+    // 0 in the picker = the key's own function.
+    const current = raw === FD_KEY_SELF || raw === id ? 0 : raw === FD_KEY_KEYBOARD || raw === FD_KEY_MACRO ? KEYBOARD : FD_TO_GS[raw] ?? 0
+    return {
+      id: `fd${id}`,
+      name: gsSelf ? keyLabel(gsSelf) : name,
+      icon: gsSelf ? <KeyIcon value={gsSelf} size={27} /> : <span className="fd-key-tag">{name}</span>,
+      current,
+      effective: current === 0 ? (gsSelf ? keyLabel(gsSelf) : t('buttons.unmapped')) : getLabel(current),
+      outputIcon: current ? renderIcon(current) : null,
+      extra: !gsSelf, known: true, selfValue: gsSelf ?? 0, extraSlots: 1 as const,
+      onPick: (v: number) => {
+        const target = v === 0 ? id : FD_FROM_GS.get(v)
+        if (target === undefined) return
+        const keys = [...draft.keys]
+        keys[id] = target === id ? FD_KEY_SELF : target
+        setDraft({ ...draft, keys })
+      }
+    }
+  })
+  return (
+    <div className="buttons-workspace gamesir-buttons-workspace">
+      <RemapWorkspace captureFamily="gamesir" keyboardCapture={false} disabled={busy} help={t('fd.buttonsHint')} options={options} getLabel={getLabel} renderIcon={renderIcon} rows={rows} />
+    </div>
+  )
+}
+
+/** Same page as OverviewPanel, with the tiles the Apex 5 supports. */
+function FdOverviewPanel({ snap, draft, onOpen }: { snap: FdSnapshot; draft: FdDraft; onOpen: (tab: 'sticks' | 'curves' | 'device') => void }): JSX.Element {
+  const t = useT()
+  const bitsShown = useTween(draft.hw.stickBits)
+  const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device'): JSX.Element => (
+    <button key={key} type="button" className="overview-tile" onClick={() => onOpen(tab)}>
+      <span className="overview-tile-icon"><NavIcon kind={icon} size={20} /></span>
+      <span className="overview-tile-label">{label}</span>
+      <strong className="overview-tile-value">{value}</strong>
+    </button>
+  )
+  const curve = (pts: Array<[number, number]>): Array<{ x: number; y: number }> => pts.map(([x, y]) => ({ x, y }))
+  return (
+    <div className="overview">
+      <div className="overview-hero">
+        <div className="tuning-page-heading"><h2>{snap.device.name}</h2><p>{t('fd.sub').replace('{fw}', snap.device.firmware)}</p></div>
+        <ControllerArt pad="Apex5" />
+      </div>
+      <div className="overview-grid">
+        {tile('poll', 'polling', t('overview.polling'), `${snap.hardware.reportRateHz ?? FD_WIRED_HZ} Hz`, 'device')}
+        {tile('bits', 'bits', t('overview.bits'), `${Math.round(bitsShown)}-bit`, 'device')}
+        {tile('lc', 'curves', t('overview.leftCurve'), <CurveMiniIcon points={curve(draft.points[0])} max={1000} />, 'curves')}
+        {tile('rc', 'curves', t('overview.rightCurve'), <CurveMiniIcon points={curve(draft.points[1])} max={1000} />, 'curves')}
+        {tile('dz', 'deadzone', t('overview.deadzones'), `L ${(ljCurveZones(draft.points[0], FD_POINTS).start / 10).toFixed(1)}% · R ${(ljCurveZones(draft.points[1], FD_POINTS).start / 10).toFixed(1)}%`, 'sticks')}
+        {tile('sens', 'sticks', t('fd.sens'), t(`fd.sens.${draft.hw.centerSensitivity}`), 'device')}
+      </div>
+    </div>
+  )
+}
+
+/** Sticks / Curves / Device for the Apex 5, built from the GameSir and LeadJoy cards. */
+function FdPages({ tab, snap, draft, setDraft, which, busy, live, editors, onEditorChange }: {
+  tab: string
+  snap: FdSnapshot
+  draft: FdDraft
+  setDraft: (next: FdDraft) => void
+  which: number
+  busy: boolean
+  live: { lx: number; ly: number; rx: number; ry: number } | null
+  editors: Record<string, CurveEditorDraft>
+  onEditorChange: (key: string, draft: CurveEditorDraft) => void
+}): JSX.Element | null {
+  const t = useT()
+  const side = which === 0 ? 0 : 1
+  const key = side === 0 ? 'left' : 'right'
+  const pts = (i: number): CurvePoint[] => draft.points[i].map(([x, y]) => ({ x, y }))
+  const stage = (i: number, next: CurvePoint[]): void => {
+    const points = [...draft.points] as FdDraft['points']
+    points[i] = next.map((p) => [Math.round(p.x), Math.round(p.y)] as [number, number])
+    setDraft({ ...draft, points })
+  }
+  const setHw = <K extends keyof FdDraft['hw']>(k: K, v: FdDraft['hw'][K]): void => setDraft({ ...draft, hw: { ...draft.hw, [k]: v } })
+  const choice = (active: boolean, label: React.ReactNode, onClick: () => void, opts: { title?: string; disabled?: boolean } = {}): JSX.Element => (
+    <button key={String(label)} className={`choice-btn${active ? ' active' : ''}`} title={opts.title} disabled={busy || opts.disabled} onClick={onClick}><span className="choice-label">{label}</span></button>
+  )
+
+  if (tab === 'sticks') return <>
+    <div className="tuning-page-heading"><h2>{t('sticks.cleanTitle')}</h2><p>{t('sticks.cleanHelp')}</p></div>
+    <div className="stick-clean-workspace"><div className="stack stick-clean-monitor">
+      <LjLiveCard live={live} hintKey="fd.liveHint" windows={[0, 1].map((i) => {
+        const z = ljCurveZones(draft.points[i], FD_POINTS)
+        return { begin: z.start, end: z.end, beginAnti: z.antiStart }
+      })} />
+      <LjOuterCard count={FD_POINTS} hintKey="hs.outerHint" points={pts(side)} onChange={(next) => stage(side, next)} />
+      <div className="card lj-shape-card">
+        <h3>{t('sticks.shape')}</h3>
+        <Hint>{t('fd.shapeHint')}</Hint>
+        <div className="stack" style={{ gap: 8 }}>
+          {choice(draft.circular[side], t('sticks.shapeRound'), () => setDraft({ ...draft, circular: (side === 0 ? [true, draft.circular[1]] : [draft.circular[0], true]) as [boolean, boolean] }))}
+          {choice(!draft.circular[side], t('sticks.shapeRaw'), () => setDraft({ ...draft, circular: (side === 0 ? [false, draft.circular[1]] : [draft.circular[0], false]) as [boolean, boolean] }))}
+        </div>
+      </div>
+    </div><div className="stack stick-clean-controls">
+      <LjZonesCard count={FD_POINTS} points={pts(side)} live={live ? (side === 0 ? { x: live.lx, y: live.ly } : { x: live.rx, y: live.ry }) : null} onChange={(next) => stage(side, next)} />
+    </div></div>
+  </>
+
+  if (tab === 'curves') {
+    const other = side === 0 ? 1 : 0
+    return <div className="curves-workspace">
+      <div className="tuning-page-heading"><h2>{t('nav.curves')}</h2><p>{t('sticks.curvesHelp')}</p></div>
+      <ZoneCurveCard count={FD_POINTS} storageKey="sticklabs.fdcurves.v1" hintKey="fd.stickHint" fixedKey="fd.fixedPoints"
+        extraGroups={[{ title: t('fd.ssCurves'), curves: FD_SS_CURVES.map((c) => ({ key: c.key, label: t(`fd.type.${c.type}`), pts: c.pts })) }]}
+        padPts={fdToPoints(snap.sticks[side].curve).map(([x, y]) => ({ x, y }))}
+        preview={(p) => p.map((q) => `${q.x}/${q.y}`).join(' · ')}
+        points={pts(side)}
+        onChange={(next) => stage(side, next)}
+        onReset={() => stage(side, fdToPoints(snap.sticks[side].curve).map(([x, y]) => ({ x, y })))}
+        onCopyToOther={() => stage(other, pts(side))}
+        editor={editors[key]}
+        onEditorChange={(d) => onEditorChange(key, d)} />
+    </div>
+  }
+
+  if (tab === 'device') return (
+    <div className="two device-workspace" style={{ alignItems: 'start' }}>
+      <div className="stack" style={{ gap: 16 }}>
+        <div className="card device-polling-card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('device.polling')}</h3></div><DeviceIcon kind="polling" size={24} /></div>
+          <Hint>{t('fd.rateFixed')}</Hint>
+          <div className="choice" style={{ margin: '10px 0' }}>
+            {choice(true, `${snap.hardware.reportRateHz ?? FD_WIRED_HZ} Hz`, () => undefined)}
+          </div>
+        </div>
+        <div className="card device-bits-card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('device.bits')}</h3></div><DeviceIcon kind="resolution" size={24} /></div>
+          <Hint>{t('device.bitHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0 6px' }}>
+            {choice(draft.hw.stickBits === 12, 'Unlimited (12-bit)', () => setHw('stickBits', 12), { title: 'Full sensor resolution' })}
+          </div>
+          <div className="choice" style={{ margin: '0 0 6px' }}>
+            {[11, 10, 9, 8].map((b) => choice(draft.hw.stickBits === b, `${b}-bit`, () => setHw('stickBits', b)))}
+          </div>
+          <Hint style={{ marginTop: 8 }}>{t('device.bitNote')}</Hint>
+        </div>
+      </div>
+      <div className="stack" style={{ gap: 16 }}>
+        <div className="card device-rate-card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('fd.sens')}</h3></div><DeviceIcon kind="rate" size={24} /></div>
+          <Hint>{t('fd.sensHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0' }}>{FD_SENSITIVITY.map((s) => choice(draft.hw.centerSensitivity === s, t(`fd.sens.${s}`), () => setHw('centerSensitivity', s)))}</div>
+        </div>
+        {([['stickDebounce', 'fd.debounce', 'fd.debounceHint'], ['autoCalibration', 'fd.autoCal', 'fd.autoCalHint'], ['rebound', 'fd.rebound', 'fd.reboundHint']] as const).map(([k, title, hint]) => (
+          snap.hardware[k].usable && <div key={k} className="card">
+            <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t(title)}</h3></div></div>
+            <Hint>{t(hint)}</Hint>
+            <div className="choice" style={{ margin: '10px 0' }}>
+              {choice(!draft.hw[k], t('hs.off'), () => setHw(k, false))}
+              {choice(draft.hw[k], t('hs.on'), () => setHw(k, true))}
+            </div>
+          </div>
+        ))}
+        <div className="card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('fd.sleep')}</h3></div></div>
+          <Hint>{t('fd.sleepHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0' }}>
+            {[0, 5, 10, 15, 30, 60].map((m) => choice(draft.hw.sleepMinutes === m, m ? `${m} min` : t('fd.never'), () => setHw('sleepMinutes', m)))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+  return null
+}
 
 /** Same page as OverviewPanel, with the tiles the HyperStrike supports. */
 function HsOverviewPanel({ snap, draft, onOpen }: { snap: HsSnapshot; draft: HsDraft; onOpen: (tab: 'sticks' | 'curves' | 'device') => void }): JSX.Element {
@@ -3209,8 +3459,10 @@ type RemapSource = {
   onPickSlots?: (values: [number, number, number]) => void
 }
 
-function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, captureFamily }: {
+function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, captureFamily, keyboardCapture = true }: {
   captureFamily: CaptureFamily
+  /** Offer the Keyboard quick bind (false for pads that can't bind keyboard keys here). */
+  keyboardCapture?: boolean
   rows: RemapSource[]
   disabled: boolean
   help: React.ReactNode
@@ -3242,7 +3494,8 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
     const stop = () => { finished = true; setCapture(null) }
     const finish = (target: number | null) => {
       if (finished) return
-      if (target === null) { setCaptureMessage(t('remap.captureUnsupported')); return }
+      // Only targets this pad offers: anything else (e.g. Guide on a pad that can't output it) is unsupported, never a silent no-op.
+      if (target === null || (options && !options.some((o) => o.value === target))) { setCaptureMessage(t('remap.captureUnsupported')); return }
       stop()
       selectedRef.current?.onPick(target)
       setCaptureMessage(t('remap.captured').replace('{button}', getLabel?.(target) ?? keyLabel(target)))
@@ -3350,7 +3603,7 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
         })()}
         <div className={`remap-step remap-capture-panel${capture ? ' active' : ''}`}>
           <div className="remap-capture-heading"><span>{t('remap.quickBind')}</span>{capture && <span className="remap-listening-dot" aria-hidden="true" />}</div>
-          <div className="remap-capture-actions">{capture ? <button type="button" className="remap-capture-cancel" onClick={() => { setCapture(null); setCaptureMessage(t('remap.captureCancelled')) }}><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>{t('remap.captureCancel')}<kbd>Esc</kbd></button> : <>{(['controller', 'keyboard'] as const).map(mode => <button type="button" className="remap-capture-choice" key={mode} aria-label={t(mode === 'keyboard' ? 'remap.captureKeyboard' : 'remap.captureController')} disabled={disabled || !selected.known} onClick={() => { setOpen(false); setCapture(mode) }}><span className="remap-capture-icon">{mode === 'keyboard' ? <MappingTypeIcon type="keyboard" size={24} /> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h8c2.1 0 3.4 1.6 3.9 3.7l1.1 5.2c.6 2.7-1.5 4-3.4 2.1L15 14H9l-2.6 3C4.5 19 2.4 17.6 3 14.9l1.1-5.2C4.6 7.6 5.9 6 8 6Z"/><path d="M8 8.8v4M6 10.8h4"/><circle cx="15.7" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="18" cy="11.8" r=".8" fill="currentColor" stroke="none"/></svg>}</span><span>{t(mode === 'keyboard' ? 'remap.keyboardLabel' : 'remap.controllerLabel')}</span></button>)}</>}</div>
+          <div className="remap-capture-actions">{capture ? <button type="button" className="remap-capture-cancel" onClick={() => { setCapture(null); setCaptureMessage(t('remap.captureCancelled')) }}><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>{t('remap.captureCancel')}<kbd>Esc</kbd></button> : <>{(keyboardCapture ? (['controller', 'keyboard'] as const) : (['controller'] as const)).map(mode => <button type="button" className="remap-capture-choice" key={mode} aria-label={t(mode === 'keyboard' ? 'remap.captureKeyboard' : 'remap.captureController')} disabled={disabled || !selected.known} onClick={() => { setOpen(false); setCapture(mode) }}><span className="remap-capture-icon">{mode === 'keyboard' ? <MappingTypeIcon type="keyboard" size={24} /> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h8c2.1 0 3.4 1.6 3.9 3.7l1.1 5.2c.6 2.7-1.5 4-3.4 2.1L15 14H9l-2.6 3C4.5 19 2.4 17.6 3 14.9l1.1-5.2C4.6 7.6 5.9 6 8 6Z"/><path d="M8 8.8v4M6 10.8h4"/><circle cx="15.7" cy="9.5" r=".8" fill="currentColor" stroke="none"/><circle cx="18" cy="11.8" r=".8" fill="currentColor" stroke="none"/></svg>}</span><span>{t(mode === 'keyboard' ? 'remap.keyboardLabel' : 'remap.controllerLabel')}</span></button>)}</>}</div>
           <p className={`remap-capture-message${capture ? ' listening' : ''}`} role="status" aria-live="polite" title={t('remap.captureHint')}>{captureMessage || t('remap.captureShortHint')}</p>
         </div>
         <button type="button" className="btn ghost remap-reset" disabled={disabled || !selected.known || !selected.current} onClick={() => { setCapture(null); selected.onPick(0); setOpen(false) }}>{t('remap.reset')}</button>
@@ -4041,6 +4294,14 @@ export default function App(): JSX.Element {
   const [hsCurveEditors, setHsCurveEditors] = useState<Record<string, CurveEditorDraft>>({})
   const [curvePane, setCurvePane] = useState<'points' | 'presets'>('presets')
   const isHs = !connected && !!hsSnap
+  // Flydigi Apex 5: read-only snapshot over its vendor interface (opened per read, like the HyperStrike).
+  const [fdPath, setFdPath] = useState<string | null>(null)
+  const [fdSnap, setFdSnap] = useState<FdSnapshot | null>(null)
+  const [fdDraft, setFdDraft] = useState<FdDraft | null>(null)
+  const [fdBusy, setFdBusy] = useState(false)
+  const [fdCurveEditors, setFdCurveEditors] = useState<Record<string, CurveEditorDraft>>({})
+  const isFd = !connected && !!fdSnap
+  const fdChanges = useMemo(() => (fdSnap && fdDraft ? fdPlan(fdSnap, fdDraft) : null), [fdSnap, fdDraft])
   // Staged HyperStrike changes; the polling rate rides along last (ACTION_START, the pad re-plugs).
   const hsPlan = useMemo((): string[] => {
     if (!hsSnap || !hsDraft) return []
@@ -4087,6 +4348,26 @@ export default function App(): JSX.Element {
   const [freshUndo, setFreshUndo] = useState<{ path: string | null; slot: number; model: string; bytes: Uint8Array; dirty: boolean; designs: Array<string | null>; modes: Record<string, boolean> } | null>(null)
   const [calibrationRunning, setCalibrationRunning] = useState(false)
   const frameRef = useRef<HTMLDivElement | null>(null)
+  // Top bar: drop labels step by step until the links and the profile buttons fit side by side.
+  const topbarRef = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    const bar = topbarRef.current
+    if (!bar) return
+    let frame = 0
+    const fit = (): void => {
+      const left = bar.firstElementChild as HTMLElement | null
+      if (!left) return
+      for (let level = 0; level <= 3; level++) {
+        bar.dataset.fit = String(level)
+        if (left.scrollWidth <= left.clientWidth + 1) break
+      }
+    }
+    const ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit) })
+    ro.observe(bar)
+    for (const child of Array.from(bar.children)) ro.observe(child)
+    fit()
+    return () => { cancelAnimationFrame(frame); ro.disconnect() }
+  }, [])
   const [connectingPath, setConnectingPath] = useState<string | null>(null)
   // Live on YouTube: checked now and every 2 minutes; the YouTube button glows and opens the stream.
   const [ytLive, setYtLive] = useState<YtLive>(YT_OFFLINE)
@@ -4335,6 +4616,42 @@ export default function App(): JSX.Element {
     try { await openPad(path) } finally { setConnectingPath(null) }
   }
 
+  async function readFlydigi(path: string): Promise<void> {
+    setErr(null)
+    try {
+      const snap = await api().flydigiRead(path)
+      setFdSnap(snap)
+      setFdDraft(fdDraftFrom(snap))
+      setFdCurveEditors({})
+      setFdPath(path)
+      if (!['overview', 'sticks', 'curves', 'buttons', 'device', 'lab', 'language', 'theme'].includes(tab)) changeTab('overview')
+      setMsg(null)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  async function writeFdDraft(): Promise<void> {
+    if (!fdPath || !fdChanges || !fdChanges.labels.length) return
+    setWriting(true)
+    setFdBusy(true)
+    setErr(null)
+    try {
+      const snap = await api().flydigiWrite(fdPath, fdChanges.edit)
+      setFdSnap(snap)
+      setFdDraft(fdDraftFrom(snap))
+      setFdCurveEditors({})
+      setSavedFlash('Apex 5')
+      window.setTimeout(() => setSavedFlash(null), 1800)
+    } catch (e) {
+      setErr((e as Error).message)
+      try { const snap = await api().flydigiRead(fdPath); setFdSnap(snap) } catch { /* keep the last snapshot */ }
+    } finally {
+      setFdBusy(false)
+      setWriting(false)
+    }
+  }
+
   async function readHyperStrike(path: string): Promise<void> {
     setHsBusy(true)
     setErr(null)
@@ -4443,9 +4760,18 @@ export default function App(): JSX.Element {
     setErr(null)
     setHsSnap(null)
     setHsPath(null)
+    setFdSnap(null)
+    setFdPath(null)
     try {
       const cand = candidates.find((c) => c.path === path)
       const pre = identifyModel(cand?.product, cand?.productId) ?? null
+      if (pre?.id === 'Apex5') {
+        // Own read-only vendor HID path; never the GameSir handshake.
+        setModel(pre)
+        setPid(cand?.productId ?? null)
+        await readFlydigi(path)
+        return
+      }
       if (pre?.id === 'HyperStrike') {
         // Own read-only Driver HID path; never the GameSir handshake.
         setModel(pre)
@@ -4808,15 +5134,31 @@ export default function App(): JSX.Element {
   // left-X/Y, right-X/Y, and 0..255 matches the GameSir cross convention
   // (up = smaller Y).
   useEffect(() => {
-    if (!isLj && !isHs) {
+    if (!isLj && !isHs && !isFd) {
       setLjLive(null)
       return
     }
     const to255 = (v: number): number => Math.max(0, Math.min(255, Math.round((v + 1) * 127.5)))
     let raf = 0
+    // Apex 5: its own 0xEF input frame, so a second XInput pad (same Windows name) can't stand in for it.
+    let fdLive: { lx: number; ly: number; rx: number; ry: number } | null = null
+    let fdTimer = 0
+    let fdBusyPoll = false
+    if (isFd && fdPath) {
+      fdTimer = window.setInterval(() => {
+        if (fdBusyPoll) return
+        fdBusyPoll = true
+        void api().flydigiLive(fdPath).then((s) => { fdLive = s }).catch(() => { fdLive = null }).finally(() => { fdBusyPoll = false })
+      }, 16)
+    }
     const poll = (): void => {
+      if (fdLive) {
+        setLjLive(fdLive)
+        raf = requestAnimationFrame(poll)
+        return
+      }
       const pads = Array.from(navigator.getGamepads()).filter((p): p is Gamepad => !!p && p.connected)
-      const pad = (isHs ? pads.find((p) => /hyperstrike/i.test(p.id)) : undefined) ?? pads.find((p) => /controller|gamepad|360|xbox|saber|leadjoy/i.test(p.id)) ?? pads[0] ?? null
+      const pad = (isHs ? pads.find((p) => /hyperstrike/i.test(p.id)) : isFd ? pads.find((p) => /flydigi|apex/i.test(p.id)) : undefined) ?? pads.find((p) => /controller|gamepad|360|xbox|saber|leadjoy/i.test(p.id)) ?? pads[0] ?? null
       if (pad) {
         const a = pad.axes
         setLjLive({ lx: to255(a[0] ?? 0), ly: to255(a[1] ?? 0), rx: to255(a[2] ?? 0), ry: to255(a[3] ?? 0) })
@@ -4826,8 +5168,8 @@ export default function App(): JSX.Element {
       raf = requestAnimationFrame(poll)
     }
     raf = requestAnimationFrame(poll)
-    return () => cancelAnimationFrame(raf)
-  }, [isLj, isHs])
+    return () => { cancelAnimationFrame(raf); window.clearInterval(fdTimer) }
+  }, [isLj, isHs, isFd, fdPath])
 
   // Center guard: while measuring, track the worst rest deviation of the
   // current stick; the countdown then proposes a Start % that covers it.
@@ -5025,9 +5367,9 @@ export default function App(): JSX.Element {
     const id = window.setTimeout(() => setSavedFlash(null), 1800)
     return () => window.clearTimeout(id)
   }, [savedAt])
-  const staged = (connected && (isLj ? ljDirty : dirty)) || (isHs && hsPlan.length > 0)
+  const staged = (connected && (isLj ? ljDirty : dirty)) || (isHs && hsPlan.length > 0) || (isFd && !!fdChanges?.labels.length)
   // editRev changes on every edit (the blob is edited in place), so the count follows edits, not live samples.
-  const liveCount = useMemo(() => (staged && !isLj ? (isHs ? hsPlan.length : changeCount()) : null), [staged, isLj, isHs, hsPlan, editRev, blob, padBytes, modelId])
+  const liveCount = useMemo(() => (staged && !isLj ? (isFd ? fdChanges?.labels.length ?? 0 : isHs ? hsPlan.length : changeCount()) : null), [staged, isLj, isHs, isFd, fdChanges, hsPlan, editRev, blob, padBytes, modelId])
   const rolledCount = useTween(liveCount ?? 0, 300, false)
   const bar = usePresence<'staged' | 'writing' | 'saved'>(staged ? (writing ? 'writing' : 'staged') : savedFlash ? 'saved' : null)
   // The sidebar highlight glides to the active item.
@@ -5079,7 +5421,7 @@ export default function App(): JSX.Element {
                   <h4>{t('nav.aim')}</h4>
                   {item('sticks', 'sticks', t('nav.sticks'))}
                   {item('curves', 'curves', t('nav.curves'))}
-                  {!isLj && !isHs && item('shift', 'shift', t('nav.shift'))}
+                  {!isLj && !isHs && !isFd && item('shift', 'shift', t('nav.shift'))}
                 </div>
                 <div className="nav-group">
                   <h4>{t('nav.controls')}</h4>
@@ -5088,8 +5430,8 @@ export default function App(): JSX.Element {
                 <div className="nav-group">
                   <h4>{t('nav.setup')}</h4>
                   {item('device', 'device', t('nav.device'))}
-                  {item('calibrate', 'calibrate', t('nav.calibrate'))}
-                  {item('profiles', 'profiles', t('nav.profiles'))}
+                  {!isFd && item('calibrate', 'calibrate', t('nav.calibrate'))}
+                  {!isFd && item('profiles', 'profiles', t('nav.profiles'))}
                 </div>
                 <details className="nav-more" open={['lab', 'language', 'theme'].includes(tab)}>
                   <summary>{t('nav.moreTools')}</summary>
@@ -5105,19 +5447,30 @@ export default function App(): JSX.Element {
         </nav>
         <div className="stack side-panel" style={{ gap: 10 }}>
           <SideDeviceCard
-            pad={isHs ? 'HyperStrike' : connected && model ? pictureKey(model.id, isLj ? leadjoyDetectedNames[ljPath ?? ''] : null) : null}
-            name={isHs ? 'HyperStrike' : connected ? (isLj ? leadjoyDetectedNames[ljPath ?? ''] ?? model?.marketingName : model?.marketingName) ?? modelId : null}
-            detail={isHs && hsSnap
+            pad={isFd ? 'Apex5' : isHs ? 'HyperStrike' : connected && model ? pictureKey(model.id, isLj ? leadjoyDetectedNames[ljPath ?? ''] : null) : null}
+            name={isFd && fdSnap ? fdSnap.device.name : isHs ? 'HyperStrike' : connected ? (isLj ? leadjoyDetectedNames[ljPath ?? ''] ?? model?.marketingName : model?.marketingName) ?? modelId : null}
+            detail={isFd && fdSnap
+              ? `${t('side.firmware')} ${fdSnap.device.firmware}`
+              : isHs && hsSnap
               ? `P${hsSnap.profile} · ${t('side.firmware')} ${hsSnap.device.firmware || '—'}`
               : connected
                 ? `${isLj ? ['Main', 'Sub1', 'Sub2'][ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`}${info?.firmware ? ` · ${t('side.firmware')} ${info.firmware}` : ''}`
                 : null}
-            live={isHs || isLj ? ljLive : connected ? live : null}
+            live={isHs || isLj || isFd ? ljLive : connected ? live : null}
           />
-          {connected && (
+          {(connected || isHs || isFd) && (
             <button
               className="btn ghost sm side-disconnect"
               onClick={() => {
+                // HyperStrike opens its HID path per call, so dropping its snapshot is the disconnect.
+                setHsSnap(null)
+                setHsPath(null)
+                setHsDraft(null)
+                setFdSnap(null)
+                setFdPath(null)
+                setFdDraft(null)
+                setFdCurveEditors({})
+                if (!connected) return
                 void api().disconnect()
                 setConnPath(null)
                 setConnected(false)
@@ -5134,12 +5487,6 @@ export default function App(): JSX.Element {
               {t('side.disconnect')}
             </button>
           )}
-          {info && (
-            <div className="device-chip">
-              <strong>{model ? model.marketingName : t('msg.unknownModel')}</strong>
-              <span>{t('msg.fw')} {info.firmware} · {t('msg.liveSlot')} P{info.currentProfile}</span>
-            </div>
-          )}
           {isLj && ljSnap && (
             <div className="note">
               <>{modelName}<br />{t('lj.version')} {ljSnap.version} · {t('lj.board')} {ljSnap.board}</>
@@ -5153,8 +5500,8 @@ export default function App(): JSX.Element {
         </div>
         <div className="status-bar">
           <div className="status-row">
-            <span className={`dot ${connected || isHs ? 'good' : 'bad'}`} />
-            {connected || isHs ? t('side.connected') : t('side.disconnected')}
+            <span className={`dot ${connected || isHs || isFd ? 'good' : 'bad'}`} />
+            {connected || isHs || isFd ? t('side.connected') : t('side.disconnected')}
             {appVersion && <span style={{ color: 'var(--text-3)' }}>v{appVersion}</span>}
           </div>
           <div className="status-row" style={{ marginTop: 8 }}>
@@ -5164,7 +5511,7 @@ export default function App(): JSX.Element {
         </div>
       </aside>
       <main className="main">
-        <header className="topbar">
+        <header className="topbar" ref={topbarRef}>
           <div className="row" style={{ gap: 12 }}>
             <h2>Stick Labs</h2>
             <button type="button" className="btn sm topbar-rescan" title={t('side.rescan')} onClick={(e) => { const b = e.currentTarget; b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); void refresh() }}>
@@ -5256,7 +5603,7 @@ export default function App(): JSX.Element {
             )}
           </div>
         </header>
-        {!connected && !hsSnap && <ConnectDrop candidates={primaryCandidates} names={leadjoyDetectedNames} connectingPath={connectingPath} onConnect={(path) => void connect(path)} />}
+        {!connected && !hsSnap && !fdSnap && <ConnectDrop candidates={primaryCandidates} names={leadjoyDetectedNames} connectingPath={connectingPath} onConnect={(path) => void connect(path)} />}
         <div className="content">
           <div className="content-frame" ref={frameRef}>
           {err && <div className="note bad">{err}</div>}
@@ -5270,10 +5617,19 @@ export default function App(): JSX.Element {
             {tab === 'buttons' && <HsButtonsPage snap={hsSnap} draft={hsDraft} setDraft={setHsDraft} busy={hsBusy} />}
             <HsPages tab={tab} snap={hsSnap} draft={hsDraft} setDraft={setHsDraft} which={which} busy={hsBusy} live={ljLive} editors={hsCurveEditors} onEditorChange={(key, d) => setHsCurveEditors((prev) => ({ ...prev, [key]: d }))} />
           </>}
-          {!connected && !hsSnap && (
+          {isFd && fdSnap && fdDraft && fdPath && <>
+            <div className="stick-selector" style={{ display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
+              <StickCards which={which} onPick={setWhich} />
+              <span className="pill">{fdDraft.hw.stickBits}-bit</span>
+            </div>
+            {tab === 'overview' && <FdOverviewPanel snap={fdSnap} draft={fdDraft} onOpen={(next) => setTab(next)} />}
+            {tab === 'buttons' && <FdButtonsPage snap={fdSnap} draft={fdDraft} setDraft={setFdDraft} busy={fdBusy} />}
+            <FdPages tab={tab} snap={fdSnap} draft={fdDraft} setDraft={setFdDraft} which={which} busy={fdBusy} live={ljLive} editors={fdCurveEditors} onEditorChange={(key, d) => setFdCurveEditors((prev) => ({ ...prev, [key]: d }))} />
+          </>}
+          {!connected && !hsSnap && !fdSnap && (
             <div className="msg"><h3>{t('msg.connect')}</h3><p>{t('msg.connectBody')}</p><button type="button" className="btn connect-rescan" onClick={() => void refresh()}>{t('side.rescan')}</button></div>
           )}
-          {!connected && !hsSnap && tab === 'overview' && (
+          {!connected && !hsSnap && !fdSnap && tab === 'overview' && (
             <section className="supported-pads">
               <h3>{t('overview.supported')}</h3>
               <div className="supported-grid">
@@ -5917,7 +6273,7 @@ export default function App(): JSX.Element {
         </div>
         {bar && (() => {
           const mode = bar.value
-          const where = mode === 'saved' ? savedFlash ?? '' : isHs ? `P${hsSnap?.profile ?? 1}` : isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
+          const where = mode === 'saved' ? savedFlash ?? '' : isFd ? 'Apex 5' : isHs ? `P${hsSnap?.profile ?? 1}` : isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
           const text = mode === 'saved' ? t('bar.saved') : mode === 'writing' ? t('bar.writing') : liveCount === null ? t('bar.unsaved') : t(liveCount === 1 ? 'bar.change' : 'bar.changes').replace('{n}', String(Math.max(1, Math.round(rolledCount))))
           return <div className={`write-bar ${mode}${bar.leaving ? ' leaving' : ''}`} role="status">
             {mode === 'writing' && <span className="write-bar-progress" aria-hidden="true" />}
@@ -5927,10 +6283,10 @@ export default function App(): JSX.Element {
             <span className="write-bar-text">{text.replace('{slot}', where)}</span>
             {mode !== 'saved' && <button
               className="btn primary"
-              disabled={mode === 'writing' || (isHs ? hsBusy : isLj ? ljBusy : busy || locked || calibrationRunning)}
-              onClick={() => { if (isHs) writeHsDraft(); else if (isLj) { setWriting(true); void writeLeadJoyDraft().finally(() => setWriting(false)) } else openReview() }}
+              disabled={mode === 'writing' || (isFd ? fdBusy : isHs ? hsBusy : isLj ? ljBusy : busy || locked || calibrationRunning)}
+              onClick={() => { if (isFd) void writeFdDraft(); else if (isHs) writeHsDraft(); else if (isLj) { setWriting(true); void writeLeadJoyDraft().finally(() => setWriting(false)) } else openReview() }}
             >
-              {mode === 'writing' ? t('common.working') : isLj || isHs ? t('top.write') : t('bar.review')}
+              {mode === 'writing' ? t('common.working') : isLj || isHs || isFd ? t('top.write') : t('bar.review')}
             </button>}
           </div>
         })()}

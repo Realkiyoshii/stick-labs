@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { DeepPollResult } from '../shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '../shared/leadjoy'
 import type { HsCalStep, HsCalType, HsEdit, HsSnapshot, HsWriteResult } from '../shared/hyperstrike'
+import type { FdEdit, FdLive, FdSnapshot } from '../shared/flydigi'
 
 async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   const result = (await ipcRenderer.invoke(channel, ...args)) as {
@@ -54,6 +55,9 @@ const api = {
   leadjoyWriteStick: (req: { path: string; slot: number; side: number; patch: LjStickPatch }) =>
     call<{ verified: boolean; restored: boolean }>('leadjoy:writeStick', req),
   hyperstrikeRead: (path: string) => call<HsSnapshot>('hyperstrike:read', path),
+  flydigiRead: (path: string) => call<FdSnapshot>('flydigi:read', path),
+  flydigiWrite: (path: string, edit: FdEdit) => call<FdSnapshot>('flydigi:write', path, edit),
+  flydigiLive: (path: string) => call<FdLive | null>('flydigi:live', path),
   hyperstrikeWrite: (path: string, edit: HsEdit) => call<HsWriteResult>('hyperstrike:write', path, edit),
   hyperstrikeSwitch: (path: string, index: number) => call<{ snapshot: HsSnapshot | null; reconnecting: boolean }>('hyperstrike:switch', path, index),
   hyperstrikeCalibrate: (path: string, step: HsCalStep, type: HsCalType) => call<void>('hyperstrike:calibrate', path, step, type),

@@ -25,6 +25,7 @@ check('unknown PID returns null (default-deny, never assume CE)', identifyModel(
 check('G7 Pro S name resolves as unknown', identifyModel('GameSir-G7 Pro S') === null)
 check('G7 SE identified', identifyModel('GameSir-G7 SE')?.id === 'G7SE')
 check('Tarantula identified', identifyModel('Tarantula CE')?.id === 'T3CE')
+check('Flydigi Apex 5 identified by PID and name', identifyModel('Flydigi APEX5', 0x2501)?.id === 'Apex5' && identifyModel('Flydigi APEX5')?.id === 'Apex5')
 check('unknown product returns null', identifyModel('SomePad X') === null && identifyModel(undefined) === null)
 
 const ce = MODELS.find((m) => m.id === 'G7ProCE')

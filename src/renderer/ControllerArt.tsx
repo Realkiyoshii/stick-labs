@@ -12,7 +12,8 @@ const PADS: Record<string, Pictured> = {
   T3CE: { name: 'GameSir Tarantula 8K', src: new URL('./assets/controllers/T3CE.webp', import.meta.url).href, tint: '#f97316' },
   XenoPro: { name: 'LeadJoy Xeno Pro', src: new URL('./assets/controllers/XenoPro.webp', import.meta.url).href, tint: '#b98cff' },
   SaberPlus: { name: 'LeadJoy Saber Plus', src: new URL('./assets/controllers/SaberPlus.webp', import.meta.url).href, tint: '#ec4899' },
-  HyperStrike: { name: 'HyperStrike', src: new URL('./assets/controllers/HyperStrike.webp', import.meta.url).href, tint: '#38bdf8' }
+  HyperStrike: { name: 'HyperStrike', src: new URL('./assets/controllers/HyperStrike.webp', import.meta.url).href, tint: '#38bdf8' },
+  Apex5: { name: 'Flydigi Apex 5', src: new URL('./assets/controllers/Apex5.webp', import.meta.url).href, tint: '#5ec8ff' }
 }
 
 /** Picture key for a model; the shared LeadJoy model picks by its detected name. */

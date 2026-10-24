@@ -9,6 +9,7 @@ export interface Candidate {
 import type { DeepPollResult } from '@shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '@shared/leadjoy'
 import type { HsCalStep, HsCalType, HsEdit, HsSnapshot, HsWriteResult } from '@shared/hyperstrike'
+import type { FdEdit, FdLive, FdSnapshot } from '@shared/flydigi'
 export interface DeviceInfo {
   firmware: string
   dongle: string
@@ -100,6 +101,12 @@ export interface LabApi {
   leadjoyWriteStick(req: { path: string; slot: number; side: number; patch: LjStickPatch }): Promise<{ verified: boolean; restored: boolean }>
   /** HyperStrike: read-only settings snapshot of the Driver interface. */
   hyperstrikeRead(path: string): Promise<HsSnapshot>
+  /** Flydigi Apex 5: read-only snapshot of the vendor interface. */
+  flydigiRead(path: string): Promise<FdSnapshot>
+  /** Flydigi Apex 5: write sticks / device settings, read back, restore on mismatch. */
+  flydigiWrite(path: string, edit: FdEdit): Promise<FdSnapshot>
+  /** Flydigi Apex 5: latest live stick frame from the pad itself, or null. */
+  flydigiLive(path: string): Promise<FdLive | null>
   /** HyperStrike: write changed objects, read each back, then save to flash. */
   hyperstrikeWrite(path: string, edit: HsEdit): Promise<HsWriteResult>
   /** HyperStrike: switch the active profile (0..3); `reconnecting` when that slot re-plugs the pad. */

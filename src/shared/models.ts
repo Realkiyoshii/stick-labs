@@ -159,6 +159,20 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
     dumpLength: 0,
     support: 'detect-only',
     supportNote: 'Read-only: Stick Labs reads polling, sampling, resolution and curves over the HyperStrike Driver interface (proven on fw 2.66). Nothing is written.'
+  },
+  {
+    id: 'Apex5',
+    marketingName: 'Flydigi Apex 5',
+    vendorId: 0x37d7,
+    usagePage: 0xffa0,
+    usage: 0x01,
+    pids: [0x2501],
+    productHints: ['APEX5', 'Apex 5'],
+    reportRates: [],
+    profileLength: 0,
+    dumpLength: 0,
+    support: 'detect-only',
+    supportNote: 'Stick curves, deadzones, shape, button binds (incl. M1–M6) and device settings over the Flydigi vendor interface; every write is read back and restored on mismatch (proven on fw 7.0.4.5).'
   }
 ]
 

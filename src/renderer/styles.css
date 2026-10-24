@@ -1488,7 +1488,7 @@ table.tbl tbody tr:hover {
 }
 .device-chip strong { font-size: 13px; color: var(--text); }
 .device-chip span { font-size: 11.5px; color: var(--text-3); }
-.side-disconnect { order: 2; }
+.side-disconnect { align-self: stretch; justify-content: center; gap: 6px; }
 .nav-item { padding: 9px 12px; }
 .status-bar { padding-top: 12px; }
 
@@ -1735,7 +1735,7 @@ table.tbl tbody tr:hover {
 .topbar-links .creator-link svg { width: 15px; height: 15px; }
 .topbar-links .creator-coffee { border-color: color-mix(in srgb, #e8b356 55%, transparent); color: #f3d38b; background: color-mix(in srgb, #e8b356 10%, transparent); }
 .topbar-links .creator-coffee:hover { background: color-mix(in srgb, #e8b356 20%, transparent); color: #fff3d6; border-color: #e8b356; }
-@media (max-width: 900px) { .topbar-links .creator-link span { display: none; } .topbar-links .creator-link { padding: 6px 9px; } }
+@media (max-width: 900px) { .topbar-links .creator-link:not(.creator-coffee) span { display: none; } .topbar-links .creator-link:not(.creator-coffee) { padding: 6px 9px; } }
 @media (max-width: 640px) { .topbar h2 { display: none; } .topbar-links { gap: 6px; padding-right: 0; } }
 
 /* Stick picker icon: a thumbstick seen from above, lettered L / R. */
@@ -1846,3 +1846,20 @@ html .creator-link.creator-youtube.live:hover svg { color: #fff; }
 .live-badge { padding: 1px 5px; border-radius: 3px; background: #ff2d2d; color: #fff; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; line-height: 1.4; }
 @keyframes yt-live { 70% { box-shadow: 0 0 0 8px rgba(255, 45, 45, 0), 0 0 18px rgba(255, 45, 45, .7); } 100% { box-shadow: 0 0 0 0 rgba(255, 45, 45, 0), 0 0 14px rgba(255, 45, 45, .55); } }
 @media (prefers-reduced-motion: reduce) { html .creator-link.creator-youtube.live { animation: none; } }
+
+/* Sidebar scrolls as one column, so the device card always sits below the menu instead of over it. */
+.sidebar { overflow-y: auto; overflow-x: hidden; }
+.sidebar > .nav { flex: 0 0 auto; overflow: visible; }
+.sidebar > .side-panel { margin-top: auto; }
+
+/* Top bar too tight for everything: icon-only links, then icon-only Rescan, then no title (set by App). */
+.topbar[data-fit='1'] .topbar-links .creator-link:not(.creator-coffee) > span:not(.live-badge),
+.topbar[data-fit='2'] .topbar-links .creator-link:not(.creator-coffee) > span:not(.live-badge),
+.topbar[data-fit='3'] .topbar-links .creator-link:not(.creator-coffee) > span:not(.live-badge) { display: none; }
+.topbar:is([data-fit='1'], [data-fit='2'], [data-fit='3']) .topbar-links .creator-link:not(.creator-coffee) { padding: 6px 9px; }
+.topbar:is([data-fit='2'], [data-fit='3']) .topbar-rescan > span { display: none; }
+.topbar[data-fit='3'] h2 { display: none; }
+
+
+/* Apex 5 extra buttons (no GameSir icon): the same badge size as the key icons. */
+.fd-key-tag { display: inline-grid; place-items: center; min-width: 27px; height: 27px; padding: 0 5px; border: 1px solid var(--line-2); border-radius: 7px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text); }

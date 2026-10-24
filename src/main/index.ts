@@ -10,6 +10,8 @@ import { Transport } from './hid'
 import { discover, discoverLive } from './hid'
 import { leadjoySession } from './leadjoy'
 import { discoverHyperStrike, hyperstrikeSession } from './hyperstrike'
+import { discoverFlydigi, flydigiSession } from './flydigi'
+import type { FdEdit } from '../shared/flydigi'
 import type { HsCalStep, HsCalType, HsEdit } from '../shared/hyperstrike'
 import { createLjApi } from '../shared/leadjoy-session'
 import type { LjButtonTarget } from '../shared/leadjoy'
@@ -149,7 +151,12 @@ function handle(channel: string, fn: (...args: any[]) => unknown): void {
   })
 }
 
-handle('device:discover', async () => [...(await discoverLive()), ...discoverHyperStrike()])
+handle('device:discover', async () => [...(await discoverLive()), ...discoverHyperStrike(), ...discoverFlydigi()])
+// Flydigi Apex 5: snapshot, verified writes (sticks, buttons, device settings) and live sticks; see shared/flydigi.ts.
+handle('flydigi:read', (path: string) => flydigiSession.readSnapshot(path))
+handle('flydigi:write', (path: string, edit: FdEdit) => flydigiSession.writeVerified(path, edit))
+// Latest Apex 5 stick frame (0xEF) or null; the listener stops when polling stops.
+handle('flydigi:live', (path: string) => flydigiSession.liveSample(path))
 // HyperStrike: snapshot read, and verified writes (SET_VALUE + read-back + SAVE_FLUSH; see shared/hyperstrike.ts).
 handle('hyperstrike:read', (path: string) => hyperstrikeSession.readSnapshot(path))
 handle('hyperstrike:write', (path: string, edit: HsEdit) => hyperstrikeSession.writeVerified(path, edit))

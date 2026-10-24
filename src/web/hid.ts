@@ -19,6 +19,7 @@ import { REPORT_LENGTH, REPORT_INPUT, REPORT_RESPONSE, VENDOR_ID, VENDOR_USAGE, 
 import type { Candidate } from '../renderer/api'
 import type { LjPort } from '@shared/leadjoy-session'
 import { HS_IDENTITIES, HS_USAGE, HS_USAGE_PAGE, type HsPort } from '@shared/hyperstrike'
+import { FD_USAGE, FD_USAGE_PAGE, FD_VENDOR_ID, type FdPort } from '@shared/flydigi'
 
 // --- minimal WebHID typings (lib.dom ships none) ----------------------------
 interface HidInputReportEvent extends Event {
@@ -58,7 +59,8 @@ function hidApi(): HidLike | null {
 export const WEB_HID_FILTERS = [
   { vendorId: VENDOR_ID, usagePage: VENDOR_USAGE_PAGE, usage: VENDOR_USAGE },
   { vendorId: 0x4131, usagePage: 0xff80, usage: 0x01 },
-  ...HS_IDENTITIES.map((i) => ({ vendorId: i.vendorId, productId: i.productId, usagePage: HS_USAGE_PAGE, usage: HS_USAGE }))
+  ...HS_IDENTITIES.map((i) => ({ vendorId: i.vendorId, productId: i.productId, usagePage: HS_USAGE_PAGE, usage: HS_USAGE })),
+  { vendorId: FD_VENDOR_ID, usagePage: FD_USAGE_PAGE, usage: FD_USAGE }
 ]
 
 /** A granted device is the HyperStrike Driver interface (any USB mode). */
@@ -67,10 +69,17 @@ function isHyperStrike(device: HidDeviceLike): boolean {
     (device.collections ?? []).some((c) => c.usagePage === HS_USAGE_PAGE && c.usage === HS_USAGE)
 }
 
+/** A granted device is the Flydigi vendor interface (Apex 5). */
+function isFlydigi(device: HidDeviceLike): boolean {
+  return device.vendorId === FD_VENDOR_ID && (device.collections ?? []).some((c) => c.usagePage === FD_USAGE_PAGE && c.usage === FD_USAGE)
+}
+
 /** Only GameSir pads may be handed to the GameSir session (connect / auto-reconnect). */
 export const isGameSirPath = (path: string): boolean => path.startsWith(`webhid:${VENDOR_ID.toString(16)}:`)
 
 const registry = new Map<string, HidDeviceLike>()
+/** Open ports per device: a second port (e.g. the Flydigi live listener next to a write) must not close the first one's device. */
+const openCount = new Map<HidDeviceLike, number>()
 let pathSeq = 0
 
 function pathFor(device: HidDeviceLike): string {
@@ -88,7 +97,7 @@ function toCandidate(device: HidDeviceLike, path: string): Candidate {
     // other granted pad — auto-reconnect may take the first one it finds.
     preferred: true,
     // In DS4/Switch/PS4 mode the HyperStrike borrows those pads' names; label it by its Driver interface.
-    product: isHyperStrike(device) ? 'HyperStrike' : device.productName,
+    product: isHyperStrike(device) ? 'HyperStrike' : device.productName?.trim(),
     manufacturer: device.manufacturerName,
     live: null
   }
@@ -134,18 +143,27 @@ export async function openHsPort(path: string): Promise<HsPort> {
   return openQueuedPort(path, 'hyperstrike', 'HyperStrike Hub')
 }
 
-async function openQueuedPort(path: string, tag: string, vendorApp: string): Promise<LjPort & HsPort> {
+/** Flydigi vendor interface over WebHID: numbered 32-byte reports (OUT id 3, IN id 4), report id kept in the frame like node-hid. */
+export async function openFdPort(path: string): Promise<FdPort> {
+  const device = registry.get(path)
+  if (device && !isFlydigi(device)) throw new Error('flydigi: not a Flydigi vendor interface')
+  return openQueuedPort(path, 'flydigi', 'Flydigi Space Station', true)
+}
+
+async function openQueuedPort(path: string, tag: string, vendorApp: string, numbered = false): Promise<LjPort & HsPort & FdPort> {
   const device = registry.get(path)
   if (!device) throw new Error(`${tag}: device is no longer granted — pick it again in the browser prompt`)
   try {
     if (!device.opened) await device.open()
+    openCount.set(device, (openCount.get(device) ?? 0) + 1)
   } catch (err) {
     throw new Error(`${tag}: cannot open device (close ${vendorApp} first) — ${(err as Error).message}`)
   }
   const queue: number[][] = []
   let waiter: ((bytes: number[] | null) => void) | null = null
   const onReport = (e: HidInputReportEvent): void => {
-    const bytes = Array.from(new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength))
+    const data = Array.from(new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength))
+    const bytes = numbered ? [e.reportId, ...data] : data
     if (waiter) {
       const w = waiter
       waiter = null
@@ -155,7 +173,8 @@ async function openQueuedPort(path: string, tag: string, vendorApp: string): Pro
   device.addEventListener('inputreport', onReport)
   return {
     async write(frame) {
-      await device.sendReport(0, Uint8Array.from(frame))
+      if (numbered) await device.sendReport(frame[0], Uint8Array.from(frame.slice(1)))
+      else await device.sendReport(0, Uint8Array.from(frame))
     },
     read(timeoutMs) {
       const next = queue.shift()
@@ -168,7 +187,9 @@ async function openQueuedPort(path: string, tag: string, vendorApp: string): Pro
     async close() {
       device.removeEventListener('inputreport', onReport)
       if (waiter) { const w = waiter; waiter = null; w(null) }
-      await device.close()
+      const left = (openCount.get(device) ?? 1) - 1
+      openCount.set(device, left)
+      if (left <= 0) await device.close()
     }
   }
 }

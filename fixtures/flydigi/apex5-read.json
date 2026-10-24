@@ -1,0 +1,82 @@
+{
+ "device": {
+  "vendorId": 14295,
+  "productId": 9473,
+  "usagePage": 65440,
+  "usage": 1,
+  "product": "Flydigi APEX5 "
+ },
+ "exchanges": [
+  {
+   "request": "035aa50102030000000000000000000000000000000000000000000000000000",
+   "replies": [
+    "045aa50101008001000000002545010070450000452500000128000011311f00"
+   ]
+  },
+  {
+   "request": "035aa50302050000000000000000000000000000000000000000000000000000",
+   "replies": [
+    "045aa5030100fb7201010f000311000000000000000000000000000000000000"
+   ]
+  },
+  {
+   "request": "035aa50402060000000000000000000000000000000000000000000000000000",
+   "replies": [
+    "045aa504010014206e7a1c000000009c473d0000000000000000000000000000"
+   ]
+  },
+  {
+   "request": "035aa51002120000000000000000000000000000000000000000000000000000",
+   "replies": [
+    "045aa51001000101000000000000000000000000000000000000000000000000"
+   ]
+  },
+  {
+   "request": "035aa5a3040014bb000000000000000000000000000000000000000000000000",
+   "replies": [
+    "045aa5a32a0000000300000904000c0701ffffffffffffffffffff0000000000",
+    "045aa5a32a01000000ff0000ff0000ff0000ff0000ff0000ff00000000000000",
+    "045aa5a32a0200ff0000ff0000ff0000050000040000ff0000ff000000000000",
+    "045aa5a32a030000ff0000ff0000040000050000050000050000fe0000000000",
+    "045aa5a32a04000000040000ff0000ff0000ff0000ff0000ff00000000000000",
+    "045aa5a32a0500000003323a424a5259647d960000ffffffffffff0000000000",
+    "045aa5a32a06007f7f7f00000000ffffff00000000ffffff000c000000000000",
+    "045aa5a32a0700041919000000003cff320050ff3201011e5005010000000000",
+    "045aa5a32a08003200ff287805003200011e5005013200ff2878050000000000",
+    "045aa5a32a0900003200000000000a0a6401ff46000000000000000000000000",
+    "045aa5a32a0a00000000000000000a0a6401ff46000000000000000000000000",
+    "045aa5a32a0b0000000000005921ffffff000000000000ffffffff0000000000",
+    "045aa5a32a0c00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a0d00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a0e00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a0f00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1000ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1100ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1200ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1300ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1400ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1500ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1600ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1700ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1800ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1900ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1a00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1b00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1c00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1d00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1e00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a1f00ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2000ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2100ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2200ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2300ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2400ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2500ffffffffffffffffffffffffffffffffffffffff0000000000",
+    "045aa5a32a2600ffffffffffffffffffff4d916e7f3100ffffffff0000000000",
+    "045aa5a32a2700ffffffffffffffffffff0332415160707a838d960000000000",
+    "045aa5a32a2800000003323a424a5259647d960000ffffffffffff0000000000",
+    "045aa5a32a29000303030303ffffffffff003f3f7f7f7fffffffff0000000000"
+   ]
+  }
+ ]
+}
