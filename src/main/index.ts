@@ -9,6 +9,8 @@ import { Controller, type DeviceInfo } from './controller'
 import { Transport } from './hid'
 import { discover, discoverLive } from './hid'
 import { leadjoySession } from './leadjoy'
+import { discoverHyperStrike, hyperstrikeSession } from './hyperstrike'
+import type { HsCalStep, HsCalType, HsEdit } from '../shared/hyperstrike'
 import { createLjApi } from '../shared/leadjoy-session'
 import type { LjButtonTarget } from '../shared/leadjoy'
 import { steamInfo, exportApexDeadzones, listInstalledGames, exportDeadzonesToGames } from './steam'
@@ -146,7 +148,16 @@ function handle(channel: string, fn: (...args: any[]) => unknown): void {
   })
 }
 
-handle('device:discover', () => discoverLive())
+handle('device:discover', async () => [...(await discoverLive()), ...discoverHyperStrike()])
+// HyperStrike: snapshot read, and verified writes (SET_VALUE + read-back + SAVE_FLUSH; see shared/hyperstrike.ts).
+handle('hyperstrike:read', (path: string) => hyperstrikeSession.readSnapshot(path))
+handle('hyperstrike:write', (path: string, edit: HsEdit) => hyperstrikeSession.writeVerified(path, edit))
+handle('hyperstrike:switch', (path: string, index: number) => hyperstrikeSession.switchProfile(path, index))
+// HyperStrike calibration: the Hub's three ACTION_START steps (begin / sample / end) and its fine-tune data.
+handle('hyperstrike:calibrate', (path: string, step: HsCalStep, type: HsCalType) => hyperstrikeSession.calibrate(path, step, type))
+handle('hyperstrike:calibrateCenter', (path: string) => hyperstrikeSession.calibrateCenterAuto(path))
+handle('hyperstrike:fineTuneRead', (path: string) => hyperstrikeSession.readFineTune(path))
+handle('hyperstrike:fineTuneWrite', (path: string, values: number[]) => hyperstrikeSession.writeFineTune(path, values))
 // LeadJoy calls (checks live in shared/leadjoy-session.ts, shared with the web build).
 // Extra-button remap is tournament-safe 1:1 only; proven path is single-record
 // write + ack + readback (docs/leadjoy-saber.md).

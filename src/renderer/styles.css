@@ -1683,3 +1683,15 @@ table.tbl tbody tr:hover {
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* Curves tab, every controller: graph and editor on the left, presets beside it and kept in view. */
+.curves-workspace .curve-tab-layout .curve-edit-layout { grid-template-columns: minmax(0, 1fr); }
+.curve-side { margin-top: 16px; min-width: 0; }
+.curve-side-tabs { margin-bottom: 12px; }
+.curve-side-tabs .choice-btn { flex: 1 1 0; }
+.curve-side > .curve-point-editor > h4, .curve-side > .curve-preset-area > .curve-presets-visible > h4 { display: none; }
+.curve-side > .curve-preset-area { margin-top: 0; padding-top: 0; border-top: 0; }
+@media (min-width: 1100px) {
+  .curves-workspace .curve-tab-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: 24px; align-items: start; }
+  .curves-workspace .curve-tab-layout > .curve-side { position: sticky; top: 12px; padding-left: 24px; border-left: 1px solid var(--line); max-height: calc(100vh - 140px); overflow-y: auto; }
+}

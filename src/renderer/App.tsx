@@ -31,6 +31,7 @@ import { createPortal, flushSync } from 'react-dom'
 import { LANGS, LangContext, tr, useLangState, useT } from './i18n'
 import { THEMES, ThemeContext, useThemeState } from './theme'
 import type { DeepPollResult } from '@shared/deeppoll'
+import { firmwareAtLeast, hsNormalizeCurve, HS_POLLING_HZ, HS_USB_MODES, HS_CLAMP, HS_CURVE_MAX, HS_CURVE_POINTS, HS_INVERT, HS_OVERSAMPLING, HS_PRESETS, HS_SPEED_STRENGTH, planWrites, type HsEdit, type HsSnapshot } from '@shared/hyperstrike'
 import { LJ_HID_KEYS, LJ_MOUSE_BUTTONS, LJ_MAP_GAMEPAD, LJ_MAP_KEYBOARD, LJ_MAP_MOUSE, LJ_SHAPES, LJ_PHYSICAL, ljCurveZones, ljFitZones, ljLinearCurve, ljPercentToWire, ljSampleDesign, ljTargetLabel, type LjButtonTarget, type LjSnapshot, type LjStickZones, type LjTriggerZones } from '@shared/leadjoy'
 
 
@@ -209,14 +210,34 @@ type CurveEditorDraft = { points: CurvePoint[]; spline: boolean; output: string 
 function sampleDesign(points: CurvePoint[], spline: boolean): CurvePoint[] {
   return resampleCurve(spline ? traceSpline(points, 255) : points)
 }
-function sampleLjDesign(points: CurvePoint[], spline: boolean): CurvePoint[] {
-  if (!spline) return points.map(p => ({ ...p }))
-  const zones = ljCurveZones(toPairs(points))
+/**
+ * Sample a free-form 0..1000 design (any number of points, optional spline)
+ * onto a pad's fixed points: the first and last design points are the
+ * deadzone / outer limit and the floor / ceiling. A design that already has
+ * `count` points and no spline is kept exactly.
+ */
+function sampleLjDesign(points: CurvePoint[], spline: boolean, count = 8): CurvePoint[] {
+  const design = [...points].sort((a, b) => a.x - b.x)
+  if (!spline && design.length === count) return design.map(p => ({ ...p }))
+  if (design.length < 2) return toPts(ljLinearCurve({ start: 0, antiStart: 0, end: 1000, antiEnd: 1000 }, count))
+  const first = design[0]
+  const last = design[design.length - 1]
+  const zones = { start: first.x, antiStart: first.y, end: last.x, antiEnd: last.y }
   const width = zones.end - zones.start
   const range = zones.antiEnd - zones.antiStart
-  if (width <= 0 || range === 0) return points.map(p => ({ ...p }))
-  const normalized = points.map(p => ({ x: (p.x - zones.start) * 255 / width, y: (p.y - zones.antiStart) * 255 / range }))
-  return toPts(ljSampleDesign(traceSpline(normalized, 255), zones))
+  if (width <= 0) return toPts(ljLinearCurve(zones, count))
+  const normalized = design.map(p => ({ x: (p.x - zones.start) * 255 / width, y: range === 0 ? 0 : (p.y - zones.antiStart) * 255 / range }))
+  return toPts(ljSampleDesign(spline ? traceSpline(normalized, 255) : normalized, zones, count))
+}
+/** Insert a point in the middle of the widest gap (scale-agnostic GameSir addDesignPoint). */
+function addZonePoint(design: CurvePoint[]): CurvePoint[] {
+  const pts = [...design].sort((a, b) => a.x - b.x)
+  if (pts.length >= DESIGN_MAX_POINTS || pts.length < 2) return pts
+  let at = 1
+  for (let i = 1; i < pts.length; i++) if (pts[i].x - pts[i - 1].x > pts[at].x - pts[at - 1].x) at = i
+  const a = pts[at - 1]
+  const b = pts[at]
+  return [...pts.slice(0, at), { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) }, ...pts.slice(at)]
 }
 function SplineControl({ enabled, onChange, slots }: { enabled: boolean; onChange: (enabled: boolean) => void; slots: number }): JSX.Element {
   const t = useT()
@@ -457,6 +478,338 @@ function CurvePlot({ points, onChange, onAddPoint, maxPoints = Number.POSITIVE_I
         drag.current = null
       }}
     />
+  )
+}
+
+type HsDraft = Required<HsEdit>
+
+function hsDraftFrom(snap: HsSnapshot): HsDraft {
+  return {
+    stickBits: snap.stickBits,
+    sampling: { presetId: snap.sampling.presetId, oversample: snap.sampling.oversample },
+    curveLeft: snap.curves.left.map(([x, y]) => [x, y] as [number, number]),
+    curveRight: snap.curves.right.map(([x, y]) => [x, y] as [number, number]),
+    speedLeft: { enabled: snap.speed.left.enabled, tiers: snap.speed.left.tiers.map((t) => ({ ...t })) },
+    speedRight: { enabled: snap.speed.right.enabled, tiers: snap.speed.right.tiers.map((t) => ({ ...t })) },
+    coalesce: { ...snap.coalesce },
+    axisInvert: snap.axisInvert,
+    circleClamp: snap.circleClamp,
+    pollingHz: snap.pollingHz ?? 8000,
+    usbMode: snap.usbModeId,
+    profileNames: snap.profiles.map((p) => p.name),
+    buttons: {
+      native: snap.buttons.native.map(([a, b]) => [a, b] as [number, number]),
+      touchpad: [...snap.buttons.touchpad] as [number, number, number],
+      extra: snap.buttons.extra.map(([a, b]) => [a, b] as [number, number]),
+      keyboardEnabled: snap.buttons.keyboardEnabled,
+      nativeKeys: snap.buttons.nativeKeys.map((k) => ({ ...k })),
+      extraKeys: snap.buttons.extraKeys.map((k) => ({ ...k }))
+    }
+  }
+}
+
+/** HyperStrike button codes (1..18) → the GameSir key values the shared icons and labels use. */
+const HS_TO_GS = [0, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 19, 20, 7, 8, 14, 15, 13, 0]
+/** GameSir's row order in HyperStrike button codes: ↑ ↓ ← →, LB RB, LS RS, A B X Y, Home View Menu, LT RT. */
+const HS_GS_ORDER = [5, 6, 7, 8, 9, 10, 13, 14, 1, 2, 3, 4, 17, 15, 16, 11, 12]
+/** Remap target values: 1..18 pad buttons, 1000 + HID key, 2000 + modifier bit. */
+const HS_KEY_BASE = 1000
+const HS_MOD_BASE = 2000
+const HS_MODIFIERS = ['Left Ctrl', 'Left Shift', 'Left Alt', 'Left Win', 'Right Ctrl', 'Right Shift', 'Right Alt', 'Right Win']
+const hsKeyValue = (k: { keycode: number; modifier: number }): number =>
+  k.keycode ? HS_KEY_BASE + k.keycode : k.modifier ? HS_MOD_BASE + Math.max(0, Math.round(Math.log2(k.modifier & -k.modifier))) : 0
+const hsKeyFrom = (v: number): { keycode: number; modifier: number } =>
+  v >= HS_MOD_BASE ? { keycode: 0, modifier: 1 << (v - HS_MOD_BASE) } : v >= HS_KEY_BASE ? { keycode: v - HS_KEY_BASE, modifier: 0 } : { keycode: 0, modifier: 0 }
+
+/** The HyperStrike Hub's own stick-curve presets (its lp table at zero adjustment), as 0..255 designs. */
+const HS_HUB_CURVES: Array<{ key: string; label: string; pts: CurvePoint[] }> = [
+  { key: 'default', label: 'Default', pts: [{ x: 0, y: 0 }, { x: 128, y: 128 }, { x: 196, y: 196 }, { x: 225, y: 225 }, { x: 255, y: 255 }] },
+  { key: 'quick', label: 'Quick', pts: [{ x: 0, y: 0 }, { x: 38, y: 38 }, { x: 107, y: 167 }, { x: 255, y: 255 }] },
+  { key: 'precise', label: 'Precise', pts: [{ x: 0, y: 0 }, { x: 85, y: 40 }, { x: 149, y: 83 }, { x: 206, y: 140 }, { x: 255, y: 255 }] },
+  { key: 'steady', label: 'Steady', pts: [{ x: 0, y: 0 }, { x: 57, y: 57 }, { x: 100, y: 127 }, { x: 210, y: 152 }, { x: 255, y: 255 }] },
+  { key: 'digital', label: 'Digital', pts: [{ x: 0, y: 0 }, { x: 38, y: 38 }, { x: 38, y: 165 }, { x: 255, y: 255 }] },
+  { key: 'dynamic', label: 'Dynamic', pts: [{ x: 0, y: 0 }, { x: 82, y: 40 }, { x: 161, y: 213 }, { x: 255, y: 255 }] }
+]
+
+const HS_OBJ_LABEL: Record<string, string> = {
+  StickResolution: 'device.bits', AdcSampling: 'hs.sampling', CurveLeft: 'overview.leftCurve', CurveRight: 'overview.rightCurve',
+  SpeedLeft: 'hs.speedL', SpeedRight: 'hs.speedR', ReportCoalesce: 'hs.merge', AxisInvert: 'hs.invert', CircleClamp: 'sticks.shape', UsbInputPolicy: 'device.polling',
+  UsbMode: 'hs.usbMode', ProfileNames: 'profiles.name', NativeButtonRemap: 'nav.buttons', ExtraButtonMap: 'nav.buttons', NativeKeyboardMap: 'nav.buttons', ExtraKeyboardMap: 'nav.buttons'
+}
+
+/** Keep a HyperStrike curve valid: outputs never fall, the last point stays at 1000. */
+const hsFixCurve = (points: Array<{ x: number; y: number }>): Array<[number, number]> => hsNormalizeCurve(points.map((p) => [p.x, p.y]))
+
+/** Same page as OverviewPanel, with the tiles the HyperStrike supports. */
+function HsOverviewPanel({ snap, draft, onOpen }: { snap: HsSnapshot; draft: HsDraft; onOpen: (tab: 'sticks' | 'curves' | 'device') => void }): JSX.Element {
+  const t = useT()
+  const hzShown = useTween(snap.pollingHz ?? 0)
+  const bitsShown = useTween(draft.stickBits)
+  const tile = (key: string, icon: NavIconKind, label: string, value: React.ReactNode, tab: 'sticks' | 'curves' | 'device'): JSX.Element => (
+    <button key={key} type="button" className="overview-tile" onClick={() => onOpen(tab)}>
+      <span className="overview-tile-icon"><NavIcon kind={icon} size={20} /></span>
+      <span className="overview-tile-label">{label}</span>
+      <strong className="overview-tile-value">{value}</strong>
+    </button>
+  )
+  const curve = (pts: Array<[number, number]>): Array<{ x: number; y: number }> => pts.map(([x, y]) => ({ x, y }))
+  return (
+    <div className="overview">
+      <div className="tuning-page-heading"><h2>HyperStrike</h2><p>{t('overview.sub').replace('{slot}', `P${snap.profile}`).replace('{fw}', snap.device.firmware || '—')}</p></div>
+      <div className="overview-grid">
+        {tile('poll', 'polling', t('overview.polling'), snap.pollingHz ? (snap.pollingHz >= 1000 ? `${Math.round(hzShown / 100) / 10}K Hz` : `${Math.round(hzShown)} Hz`) : '—', 'device')}
+        {tile('bits', 'bits', t('overview.bits'), `${Math.round(bitsShown)}-bit`, 'device')}
+        {tile('lc', 'curves', t('overview.leftCurve'), <CurveMiniIcon points={curve(draft.curveLeft)} max={HS_CURVE_MAX} />, 'curves')}
+        {tile('rc', 'curves', t('overview.rightCurve'), <CurveMiniIcon points={curve(draft.curveRight)} max={HS_CURVE_MAX} />, 'curves')}
+        {tile('dz', 'deadzone', t('overview.deadzones'), `L ${(ljCurveZones(draft.curveLeft, HS_CURVE_POINTS).start / 10).toFixed(1)}% · R ${(ljCurveZones(draft.curveRight, HS_CURVE_POINTS).start / 10).toFixed(1)}%`, 'sticks')}
+        {tile('samp', 'sticks', t('hs.sampling'), HS_PRESETS.find((p) => p.id === draft.sampling.presetId)?.name ?? snap.sampling.preset, 'device')}
+      </div>
+    </div>
+  )
+}
+
+/** Sticks / Curves / Device for the HyperStrike, built from the GameSir and LeadJoy cards. */
+function HsPages({ tab, snap, draft, setDraft, which, busy, live, editors, onEditorChange }: {
+  tab: string
+  snap: HsSnapshot
+  draft: HsDraft
+  setDraft: (next: HsDraft) => void
+  which: number
+  busy: boolean
+  live: { lx: number; ly: number; rx: number; ry: number } | null
+  editors: Record<string, CurveEditorDraft>
+  onEditorChange: (key: string, draft: CurveEditorDraft) => void
+}): JSX.Element | null {
+  const t = useT()
+  const set = <K extends keyof HsDraft>(k: K, v: HsDraft[K]): void => setDraft({ ...draft, [k]: v })
+  const side = which === 0 ? 'left' : 'right'
+  const curveKey = which === 0 ? 'curveLeft' : 'curveRight'
+  const speedKey = which === 0 ? 'speedLeft' : 'speedRight'
+  const pts = (k: 'curveLeft' | 'curveRight'): CurvePoint[] => draft[k].map(([x, y]) => ({ x, y }))
+  const stage = (k: 'curveLeft' | 'curveRight', next: CurvePoint[]): void => set(k, hsFixCurve(next))
+  const fix = (next: CurvePoint[]): CurvePoint[] => hsFixCurve(next).map(([x, y]) => ({ x, y }))
+  const speed = draft[speedKey]
+  const clampBit = HS_CLAMP[side]
+  const invX = which === 0 ? HS_INVERT.leftX : HS_INVERT.rightX
+  const invY = which === 0 ? HS_INVERT.leftY : HS_INVERT.rightY
+  const choice = (active: boolean, label: React.ReactNode, onClick: () => void, opts: { title?: string; disabled?: boolean } = {}): JSX.Element => (
+    <button key={String(label)} className={`choice-btn${active ? ' active' : ''}`} title={opts.title} disabled={busy || opts.disabled} onClick={onClick}><span className="choice-label">{label}</span></button>
+  )
+
+  if (tab === 'sticks') return <>
+    <div className="tuning-page-heading"><h2>{t('sticks.cleanTitle')}</h2><p>{t('sticks.cleanHelp')}</p></div>
+    <div className="stick-clean-workspace"><div className="stack stick-clean-monitor">
+      <LjLiveCard live={live} hintKey="hs.liveHint" windows={(['curveLeft', 'curveRight'] as const).map((k) => {
+        const z = ljCurveZones(draft[k], HS_CURVE_POINTS)
+        return { begin: z.start, end: z.end, beginAnti: z.antiStart }
+      })} />
+      <LjOuterCard count={HS_CURVE_POINTS} hintKey="hs.outerHint" points={pts(curveKey)} onChange={(next) => stage(curveKey, next)} />
+      <div className="card lj-shape-card">
+        <h3>{t('sticks.shape')}</h3>
+        <Hint>{t('hs.shapeHint')}</Hint>
+        <div className="stack" style={{ gap: 8 }}>
+          {choice((draft.circleClamp & clampBit) !== 0, t('sticks.shapeRound'), () => set('circleClamp', draft.circleClamp | clampBit))}
+          {choice((draft.circleClamp & clampBit) === 0, t('sticks.shapeRaw'), () => set('circleClamp', draft.circleClamp & ~clampBit))}
+        </div>
+      </div>
+      <div className="card lj-shape-card">
+        <h3>{t('hs.invert')}</h3>
+        <Hint>{t('hs.invertHelp')}</Hint>
+        <div className="choice" style={{ margin: '10px 0 0' }}>
+          {choice((draft.axisInvert & invX) !== 0, t('hs.invertX'), () => set('axisInvert', draft.axisInvert ^ invX))}
+          {choice((draft.axisInvert & invY) !== 0, t('hs.invertY'), () => set('axisInvert', draft.axisInvert ^ invY))}
+        </div>
+      </div>
+    </div><div className="stack stick-clean-controls">
+      <LjZonesCard count={HS_CURVE_POINTS} fixedCeiling points={pts(curveKey)} onChange={(next) => stage(curveKey, next)} />
+    </div></div>
+  </>
+
+  if (tab === 'curves') {
+    const other = which === 0 ? 'curveRight' : 'curveLeft'
+    return <div className="curves-workspace">
+      <div className="tuning-page-heading"><h2>{t('nav.curves')}</h2><p>{t('sticks.curvesHelp')}</p></div>
+      <ZoneCurveCard count={HS_CURVE_POINTS} storageKey="sticklabs.hscurves.v1" hintKey="hs.stickHint" fixedKey="hs.fixedPoints" fixOutput={fix}
+        extraGroups={[{ title: t('hs.hubCurves'), curves: HS_HUB_CURVES }]}
+        padPts={snap.curves[side].map(([x, y]) => ({ x, y }))}
+        preview={(p) => p.map((q) => `${q.x}/${q.y}`).join(' · ')}
+        points={pts(curveKey)}
+        onChange={(next) => stage(curveKey, next)}
+        onReset={() => set(curveKey, snap.curves[side].map(([x, y]) => [x, y] as [number, number]))}
+        onCopyToOther={() => set(other, draft[curveKey].map(([x, y]) => [x, y] as [number, number]))}
+        editor={editors[side]}
+        onEditorChange={(d) => onEditorChange(side, d)} />
+      <div className="card stick-curve-card">
+        <h3>{t(which === 0 ? 'hs.speedL' : 'hs.speedR')}</h3>
+        <Hint>{t('hs.speedHint')}</Hint>
+        <div className="choice" style={{ margin: '10px 0' }}>
+          {choice(!speed.enabled, t('hs.off'), () => set(speedKey, { ...speed, enabled: false }))}
+          {choice(speed.enabled, t('hs.on'), () => set(speedKey, { ...speed, enabled: true }))}
+        </div>
+        {speed.enabled && <div className="stack" style={{ gap: 12 }}>{speed.tiers.map((tier, i) => (
+          <Slider key={i} label={t('hs.tier').replace('{pct}', String(Math.round(tier.end / 255 * 100)))} value={tier.strength} min={-HS_SPEED_STRENGTH} max={HS_SPEED_STRENGTH} step={5} disabled={busy}
+            onChange={(v) => set(speedKey, { ...speed, tiers: speed.tiers.map((x, k) => (k === i ? { ...x, strength: v } : x)) })} />
+        ))}</div>}
+      </div>
+    </div>
+  }
+
+  if (tab === 'device') return (
+    <div className="two device-workspace" style={{ alignItems: 'start' }}>
+      <div className="stack" style={{ gap: 16 }}>
+        <div className="card device-polling-card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('device.polling')}</h3></div><DeviceIcon kind="polling" size={24} /></div>
+          <Hint>{t('hs.pollingHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0' }}>
+            {HS_POLLING_HZ.map((hz) => choice(draft.pollingHz === hz, hz >= 1000 ? `${hz / 1000}K` : `${hz} Hz`, () => setDraft({ ...draft, pollingHz: hz, usbMode: snap.usbModeId })))}
+          </div>
+        </div>
+        {snap.usbModes.length > 1 && <div className="card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('hs.usbMode')}</h3></div></div>
+          <Hint>{t('hs.usbModeHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0' }}>
+            {HS_USB_MODES.filter((m) => snap.usbModes.includes(m.id)).map((m) => choice(draft.usbMode === m.id, m.name, () => setDraft({ ...draft, usbMode: m.id, pollingHz: snap.pollingHz ?? draft.pollingHz })))}
+          </div>
+        </div>}
+        <div className="card device-bits-card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('device.bits')}</h3></div><DeviceIcon kind="resolution" size={24} /></div>
+          <Hint>{t('device.bitHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0 6px' }}>
+            {choice(draft.stickBits === 12, 'Unlimited (12-bit)', () => set('stickBits', 12), { title: 'Full sensor resolution' })}
+          </div>
+          <div className="choice" style={{ margin: '0 0 6px' }}>
+            {[11, 10, 9, 8].map((b) => choice(draft.stickBits === b, `${b}-bit`, () => set('stickBits', b)))}
+          </div>
+          <Hint style={{ marginTop: 8 }}>{t('device.bitNote')}</Hint>
+        </div>
+      </div>
+      <div className="stack" style={{ gap: 16 }}>
+        <div className="card device-rate-card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('hs.sampling')}</h3></div><DeviceIcon kind="rate" size={24} /></div>
+          <Hint>{t('hs.samplingHint')}</Hint>
+          {snap.sampling.manual && <div className="note" style={{ marginTop: 8 }}>{t('hs.manual')}</div>}
+          <div className="choice" style={{ margin: '10px 0' }}>
+            {HS_PRESETS.filter((p) => !('minFw' in p) || firmwareAtLeast(snap.device.firmware, p.minFw)).map((p) => choice(draft.sampling.presetId === p.id, p.name, () => set('sampling', { ...draft.sampling, presetId: p.id })))}
+          </div>
+          {snap.sampling.version >= 2 && <>
+            <div className="label" style={{ marginTop: 6 }}>{t('hs.oversampling')}</div>
+            <div className="choice" style={{ margin: '6px 0' }}>
+              {HS_OVERSAMPLING.map((name, i) => choice(draft.sampling.oversample === i, name, () => set('sampling', { ...draft.sampling, oversample: i })))}
+            </div>
+          </>}
+        </div>
+        <div className="card">
+          <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('nav.device')}</span><h3>{t('hs.merge')}</h3></div></div>
+          <Hint>{t('hs.mergeHint')}</Hint>
+          <div className="choice" style={{ margin: '10px 0' }}>
+            {choice(!draft.coalesce.enabled, t('hs.off'), () => set('coalesce', { ...draft.coalesce, enabled: false }))}
+            {choice(draft.coalesce.enabled, t('hs.on'), () => set('coalesce', { ...draft.coalesce, enabled: true }))}
+          </div>
+          {draft.coalesce.enabled && <Slider label={t('hs.heartbeat')} value={draft.coalesce.heartbeatMs} min={10} max={1000} step={10} unit=" ms" disabled={busy} onChange={(v) => set('coalesce', { ...draft.coalesce, heartbeatMs: v })} />}
+        </div>
+      </div>
+    </div>
+  )
+  return null
+}
+
+/** Same card as the GameSir profile table, with what the HyperStrike stores: four named slots. */
+function HsProfilesCard({ snap, names, busy, onRename, onSwitch }: { snap: HsSnapshot; names: string[]; busy: boolean; onRename: (index: number, name: string) => void; onSwitch: (index: number) => void }): JSX.Element {
+  const t = useT()
+  const modeName = (id: number): string => HS_USB_MODES.find((m) => m.id === id)?.name ?? '—'
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>{t('profiles.title')} — {t('profiles.subtitle')}</h3>
+      <Hint>{t('hs.profilesHint')}</Hint>
+      <table className="tbl">
+        <thead><tr><th>{t('profiles.slot')}</th><th>{t('profiles.name')}</th><th>{t('profiles.active')}</th><th>{t('profiles.actions')}</th></tr></thead>
+        <tbody>
+          {snap.profiles.map((p, i) => (
+            <tr key={i}>
+              <td className="mono">P{i + 1}</td>
+              <td><input className="input" maxLength={24} value={names[i] ?? ''} disabled={busy} onChange={(e) => onRename(i, e.target.value)} /></td>
+              <td>{i + 1 === snap.profile ? <span className="pill good">{t('profiles.current')}</span> : <span className="tag">{modeName(p.usbMode)}{p.pollingHz ? ` · ${p.pollingHz >= 1000 ? `${p.pollingHz / 1000}K` : `${p.pollingHz} Hz`}` : ''}</span>}</td>
+              <td><button className="btn sm ghost" disabled={busy || i + 1 === snap.profile} onClick={() => onSwitch(i)}>{t('hs.switch')}</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * Buttons tab for the HyperStrike, row for row like GameSir's: same order
+ * (D-pad, bumpers, sticks, face, system, triggers), same icons and labels,
+ * multi-bind where the pad stores a second output. Value 0 = the button's own
+ * output. Extra (back) buttons are left alone: owners mod them and bind them on the pad.
+ */
+function HsButtonsPage({ snap, draft, setDraft, busy }: { snap: HsSnapshot; draft: HsDraft; setDraft: (next: HsDraft) => void; busy: boolean }): JSX.Element {
+  const t = useT()
+  const b = draft.buttons
+  const commit = (next: HsDraft['buttons']): void => {
+    const anyKey = [...next.nativeKeys, ...next.extraKeys].some((k) => k.keycode || k.modifier)
+    setDraft({ ...draft, buttons: { ...next, keyboardEnabled: anyKey } })
+  }
+  // A button the pad has set to send nothing (only possible from the Hub).
+  const HS_OFF = 99
+  const options = [
+    { value: 0, label: t('buttons.unmapped') },
+    ...HS_GS_ORDER.map((code) => ({ value: code, label: keyLabel(HS_TO_GS[code]) })),
+    ...LJ_HID_KEYS.filter((k) => k.code <= 101).map((k) => ({ value: HS_KEY_BASE + k.code, label: k.label })),
+    ...HS_MODIFIERS.map((label, bit) => ({ value: HS_MOD_BASE + bit, label }))
+  ]
+  const getLabel = (v: number): string => (v === HS_OFF ? t('hs.off') : v === 18 ? t('hs.touchpad') : options.find((o) => o.value === v)?.label ?? t('buttons.unmapped'))
+  const renderIcon = (v: number): JSX.Element | null => (v >= HS_KEY_BASE ? <MappingTypeIcon type="keyboard" /> : v > 0 && HS_TO_GS[v] ? <KeyIcon value={HS_TO_GS[v]} size={28} /> : null)
+  const mapping = (outs: number[]): string => outs.filter((v) => v !== 0).map(getLabel).join(' + ') || '—'
+  const rows = HS_GS_ORDER.map((self) => {
+    const i = self - 1
+    const key = b.nativeKeys[i]
+    const [out1, out2] = b.native[i]
+    const isKey = !!(key.keycode || key.modifier)
+    const plain = out1 === self && out2 === 0
+    const current = isKey ? hsKeyValue(key) : plain ? 0 : out1 === 0 && out2 === 0 ? HS_OFF : out1 || out2
+    const slots: [number, number, number] = isKey || plain ? [0, 0, 0] : [out1, out2, 0]
+    return {
+      id: `n${i}`, name: keyLabel(HS_TO_GS[self]), icon: <KeyIcon value={HS_TO_GS[self]} size={27} />, current,
+      effective: isKey ? getLabel(current) : current === HS_OFF ? t('hs.off') : mapping([out1, out2]),
+      outputIcon: current ? renderIcon(current === HS_OFF ? 0 : current) : null,
+      extra: false, known: true, selfValue: self, extraSlots: 1 as const,
+      // The second-output picker only applies to pad outputs, not keyboard keys.
+      ...(isKey ? {} : {
+        slots,
+        onPickSlots: (vals: [number, number, number]) => {
+          const native = b.native.map((p, k) => (k === i ? ([vals[0] || self, vals[1]] as [number, number]) : p))
+          commit({ ...b, native, nativeKeys: b.nativeKeys.map((k, n) => (n === i ? { keycode: 0, modifier: 0 } : k)) })
+        }
+      }),
+      onPick: (v: number) => {
+        const pad = v > 0 && v < HS_KEY_BASE ? v : v === 0 ? self : 0
+        const native = b.native.map((p, k) => (k === i ? ([pad, 0] as [number, number]) : p))
+        const nativeKeys = b.nativeKeys.map((k, n) => (n === i ? hsKeyFrom(v) : k))
+        commit({ ...b, native, nativeKeys })
+      }
+    }
+  })
+  // Touchpad output for the pad's current USB mode (DS4, XInput, Switch); the Hub's defaults are click, none, click.
+  const tpSlot = snap.usbModeId === 0 || snap.usbModeId === 3 ? 0 : snap.usbModeId === 2 ? 2 : 1
+  const tpDefault = tpSlot === 1 ? 0 : 18
+  const tp = b.touchpad[tpSlot]
+  const tpValue = tp === tpDefault ? 0 : tp === 0 ? HS_OFF : tp
+  rows.push({
+    id: 'tp', name: t('hs.touchpad'), icon: <MappingTypeIcon type="mouse" size={27} />, current: tpValue, effective: getLabel(tpValue), outputIcon: tpValue ? renderIcon(tpValue === HS_OFF ? 0 : tpValue) : null,
+    extra: false, known: true, selfValue: 18, extraSlots: 1 as const,
+    onPick: (v: number) => {
+      if (v >= HS_KEY_BASE) return
+      const touchpad = [...b.touchpad] as [number, number, number]
+      touchpad[tpSlot] = v === 0 ? tpDefault : v
+      commit({ ...b, touchpad })
+    }
+  })
+  return (
+    <div className="buttons-workspace gamesir-buttons-workspace">
+      <RemapWorkspace captureFamily="hyperstrike" disabled={busy} help={t('hs.buttonsHint')} options={options} getLabel={getLabel} renderIcon={renderIcon} rows={rows} />
+    </div>
   )
 }
 
@@ -1984,6 +2337,121 @@ function CalibrationPanel({ modelName }: { modelName: string }): JSX.Element {
   )
 }
 
+/**
+ * HyperStrike calibration on the GameSir calibration bench layout. The steps
+ * are the Hub's own: range (begin → rotate → end) and an automatic center
+ * pass (begin, three samples, end). The pad has no cancel command, so there is
+ * no Exit; it stores the result itself when a step ends.
+ */
+function HsCalibrationPanel({ path, live, onActiveChange }: { path: string; live: { lx: number; ly: number; rx: number; ry: number } | null; onActiveChange: (active: boolean) => void }): JSX.Element {
+  const t = useT()
+  const [mode, setMode] = useState<'full' | 'range' | 'center'>('full')
+  const [phase, setPhase] = useState<'idle' | 'range' | 'centerReady'>('idle')
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState({ range: false, center: false })
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [fine, setFine] = useState<number[] | null>(null)
+  const [before, setBefore] = useState<number[] | null>(null)
+  const active = phase !== 'idle'
+  useEffect(() => { onActiveChange(active); return () => onActiveChange(false) }, [active, onActiveChange])
+  const run = async (fn: () => Promise<void>): Promise<void> => {
+    setBusy(true); setError(null)
+    try { await fn() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  const readFine = async (): Promise<number[] | null> => {
+    try { const v = await api().hyperstrikeFineTuneRead(path); setFine(v); return v } catch { setFine(null); return null }
+  }
+  const centerPass = async (): Promise<void> => {
+    await api().hyperstrikeCalibrateCenter(path)
+    setDone((d) => ({ ...d, center: true }))
+    setPhase('idle')
+    setMessage(t('hs.cal.centerDone'))
+    await readFine()
+  }
+  const start = (): Promise<void> => run(async () => {
+    if (!window.confirm(t(mode === 'center' ? 'hs.cal.confirmCenter' : 'hs.cal.confirmRange'))) return
+    setDone({ range: false, center: false })
+    setBefore(await readFine())
+    if (mode === 'center') { await centerPass(); return }
+    await api().hyperstrikeCalibrate(path, 'begin', 'range')
+    setPhase('range')
+    setMessage(t('hs.cal.rotating'))
+  })
+  const finishRange = (): Promise<void> => run(async () => {
+    await api().hyperstrikeCalibrate(path, 'end', 'range')
+    setDone((d) => ({ ...d, range: true }))
+    if (mode === 'full') { setPhase('centerReady'); setMessage(t('hs.cal.release')) } else { setPhase('idle'); setMessage(t('hs.cal.rangeDone')); await readFine() }
+  })
+  const centerNow = (): Promise<void> => run(centerPass)
+  const restore = (): Promise<void> => run(async () => {
+    if (!before || !window.confirm(t('hs.cal.confirmRestore'))) return
+    setFine(await api().hyperstrikeFineTuneWrite(path, before))
+    setMessage(t('hs.cal.restored'))
+  })
+  const status = phase === 'idle' ? 'notStarted' : 'running'
+  const partState = (key: 'range' | 'center'): string => {
+    if (mode !== 'full' && mode !== key) return 'notSelected'
+    if (done[key]) return 'passed'
+    if ((key === 'range' && phase === 'range') || (key === 'center' && phase === 'centerReady')) return 'waiting'
+    return 'notStarted'
+  }
+  const steps = mode === 'center' ? ['hs.cal.stepCenter'] : mode === 'range' ? ['hs.cal.stepRange1', 'hs.cal.stepRange2'] : ['hs.cal.stepRange1', 'hs.cal.stepRange2', 'hs.cal.stepCenter']
+  const complete = (mode === 'full' && done.range && done.center) || (mode === 'range' && done.range) || (mode === 'center' && done.center)
+  return <div className={`lab-calibration${active ? ' is-active' : ''}${complete ? ' is-complete' : ''}`}>
+    <div className="lab-cal-toolbar">
+      <div className="lab-cal-title"><span className="stick-eyebrow">STICK LABS</span><h2>{t('cal.bench')}</h2></div>
+      <span className={`lab-cal-session ${status}`} role="status"><i />{t(`cal.web.${status}`)}</span>
+    </div>
+    <div className="lab-cal-modes" role="group" aria-label={t('cal.web.parts')}>
+      {(['full', 'range', 'center'] as const).map((key) => <button key={key} className={`choice-btn lab-cal-mode${mode === key ? ' active' : ''}`} aria-pressed={mode === key} disabled={active || busy} onClick={() => setMode(key)}>
+        <span className="lab-cal-mode-icon" aria-hidden="true">{key === 'full' ? <><StickSideIcon side="left" size={20} /><StickSideIcon side="right" size={20} /></> : <StickSideIcon side={key === 'range' ? 'left' : 'right'} size={25} />}</span>
+        <span className="choice-label">{t(`hs.cal.${key}`)}</span>
+      </button>)}
+    </div>
+    <div className="lab-cal-workspace">
+      <section className="card lab-cal-instruments">
+        <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('cal.fineLive')}</span><h3>{t('cal.fineLiveTitle')}</h3></div><span className={`lab-cal-input-light${live ? ' on' : ''}`} aria-label={live ? t('cal.connected') : t('cal.waiting')} /></div>
+        <div className="lab-cal-dials">
+          <StickDial x={live?.lx ?? 128} y={live?.ly ?? 128} label={t('cal.web.left')} />
+          <StickDial x={live?.rx ?? 128} y={live?.ry ?? 128} label={t('cal.web.right')} />
+        </div>
+      </section>
+      <section className="card lab-cal-guide">
+        <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('cal.web.parts')}</span><h3>{t(`hs.cal.${mode}`)}</h3></div></div>
+        <ol>{steps.map((k, i) => <li key={k}><span className="lab-cal-step-mark" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span><p>{t(k)}</p></li>)}</ol>
+      </section>
+    </div>
+    <section className="lab-cal-feedback" aria-label={t('cal.web.status')}>
+      {(['range', 'center'] as const).map((key) => {
+        const state = partState(key)
+        return <div key={key} className={`lab-cal-part ${state}`}><span className="lab-cal-part-indicator" aria-hidden="true">{state === 'passed' ? '✓' : '·'}</span><span><strong>{t(`hs.cal.${key}`)}</strong><small>{t(`cal.web.${state}`)}</small></span></div>
+      })}
+    </section>
+    <details className="stick-extra lab-cal-center">
+      <summary>{t('hs.cal.fineTune')}</summary>
+      <div className="stick-extra-body">
+        <p className="hint">{t('hs.cal.fineTuneHint')}</p>
+        <div className="mono" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6, margin: '8px 0' }}>
+          {fine ? fine.map((v, i) => <span key={i} className="tag" title={`#${i + 1}`}>{v}</span>) : <span className="hint">{t('hs.cal.fineTuneNone')}</span>}
+        </div>
+        <div className="row wrap" style={{ gap: 8 }}>
+          <button className="btn sm ghost" disabled={busy} onClick={() => void run(async () => { setFine(await api().hyperstrikeFineTuneRead(path)) })}>{t('hs.cal.read')}</button>
+          {before && <button className="btn sm ghost" disabled={busy || active} onClick={() => void restore()}>{t('hs.cal.restore')}</button>}
+        </div>
+      </div>
+    </details>
+    <footer className="lab-cal-dock">
+      <div className="lab-cal-dock-copy">{error ? <span className="lab-cal-error" role="alert">{error}</span> : message ? <span role="status">{message}</span> : <span>{t(`cal.web.${status}`)}</span>}</div>
+      <div className="lab-cal-dock-actions">
+        {phase === 'idle' && <button className="btn primary" disabled={busy} onClick={() => void start()}><span aria-hidden="true">▶</span>{t('cal.web.start')}</button>}
+        {phase === 'range' && <button className="btn primary" disabled={busy} onClick={() => void finishRange()}><span aria-hidden="true">✓</span>{t('hs.cal.finishRange')}</button>}
+        {phase === 'centerReady' && <button className="btn primary" disabled={busy} onClick={() => void centerNow()}><span aria-hidden="true">✓</span>{t('hs.cal.centerNow')}</button>}
+      </div>
+    </footer>
+  </div>
+}
+
 function HardwareCalibrationPanel({ dirty, blocked, onActiveChange }: { dirty: boolean; blocked: boolean; onActiveChange: (active: boolean) => void }): JSX.Element {
   const t = useT()
   const [live, setLive] = useState<LiveSample | null>(null)
@@ -2623,6 +3091,8 @@ type RemapSource = {
   onPick: (value: number) => void
   /** Multi-bind (GameSir 8K): all three output slots, pressed together. */
   slots?: [number, number, number]
+  /** How many "also sends" pickers the pad supports (GameSir 2, HyperStrike 1). */
+  extraSlots?: 1 | 2
   /** The key's own value, used as output 1 when extras are added to an unmapped key. */
   selfValue?: number
   onPickSlots?: (values: [number, number, number]) => void
@@ -2761,7 +3231,7 @@ function RemapWorkspace({ rows, disabled, help, options, getLabel, renderIcon, c
             <div className="remap-step remap-multi">
               <div className="remap-binding-label">{t('remap.multiTitle')}</div>
               <p className="remap-capture-message">{t('remap.multiHint')}</p>
-              {([1, 2] as const).map((i) => (
+              {([1, 2] as const).filter((i) => i <= (selected.extraSlots ?? 2)).map((i) => (
                 <KeySelect key={`${selected.id}-${i}`} value={slots[i]} disabled={disabled || (i === 2 && slots[1] === 0) || (!slots[0] && !selected.selfValue)} open={openSlot === i} onToggle={() => { setCapture(null); setOpen(false); setOpenSlot(openSlot === i ? null : i) }} onClose={() => setOpenSlot(null)} onPick={(v) => pickSlot(i, v)} options={options} getLabel={getLabel} renderIcon={renderIcon} searchable />
               ))}
             </div>
@@ -3034,12 +3504,12 @@ const ljSameTarget = (a: LjButtonTarget | null, b: LjButtonTarget | null): boole
  * and the deadzone card and the designer edit one image. Edits stage upward;
  * the topbar Write commits the side and reads it back.
  */
-function LjLiveCard({ live, windows }: { live: { lx: number; ly: number; rx: number; ry: number } | null; windows?: Array<{ begin: number; end: number; beginAnti: number } | null> }): JSX.Element {
+function LjLiveCard({ live, windows, hintKey = 'lj.liveHint' }: { live: { lx: number; ly: number; rx: number; ry: number } | null; windows?: Array<{ begin: number; end: number; beginAnti: number } | null>; hintKey?: string }): JSX.Element {
   const t = useT()
   return (
     <div className="card lj-live-card">
       <h3>{t('sticks.live')}</h3>
-      <Hint>{t('lj.liveHint')}</Hint>
+      <Hint>{t(hintKey)}</Hint>
       <StickCross
         lx={live?.lx ?? 128}
         ly={live?.ly ?? 128}
@@ -3055,14 +3525,17 @@ function LjLiveCard({ live, windows }: { live: { lx: number; ly: number; rx: num
   )
 }
 
-function LjZonesCard({ points, onChange }: {
+function LjZonesCard({ points, onChange, count = 8, fixedCeiling = false }: {
   points: Array<{ x: number; y: number }>
   onChange: (next: Array<{ x: number; y: number }>) => void
+  count?: number
+  /** The pad requires the last point at 100% output: no ceiling slider. */
+  fixedCeiling?: boolean
 }): JSX.Element | null {
   const t = useT()
-  if (points.length !== 8) return null
-  const z = ljCurveZones(toPairs(points))
-  const apply = (patch: Partial<LjStickZones>): void => onChange(toPts(ljFitZones(toPairs(points), { ...z, ...patch })))
+  if (points.length !== count) return null
+  const z = ljCurveZones(toPairs(points), count)
+  const apply = (patch: Partial<LjStickZones>): void => onChange(toPts(ljFitZones(toPairs(points), { ...z, ...patch }, count)))
   const slider = (key: keyof LjStickZones, label: string): JSX.Element => (
     <Slider label={label} value={z[key]} min={0} max={1000} step={1} format={(v) => `${(v / 10).toFixed(1)}%`} onChange={(v) => apply({ [key]: v })} />
   )
@@ -3075,25 +3548,27 @@ function LjZonesCard({ points, onChange }: {
         {slider('end', t('sticks.outerLabel'))}
       </div>
       </div><div className="card stick-output-card"><div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.outputLabel')}</span><h3>{t('sticks.outputTitle')}</h3></div></div><p className="stick-intro">{t('sticks.outputHelp')}</p>
-      <div className="stack" style={{ gap: 18 }}>{slider('antiStart', t('sticks.floorLabel'))}{slider('antiEnd', t('sticks.ceilingLabel'))}</div>
+      <div className="stack" style={{ gap: 18 }}>{slider('antiStart', t('sticks.floorLabel'))}{!fixedCeiling && slider('antiEnd', t('sticks.ceilingLabel'))}</div>
       </div>
     </div>
   )
 }
 
-function LjOuterCard({ points, onChange }: {
+function LjOuterCard({ points, onChange, count = 8, hintKey = 'lj.outerHint' }: {
   points: Array<{ x: number; y: number }>
   onChange: (next: Array<{ x: number; y: number }>) => void
+  count?: number
+  hintKey?: string
 }): JSX.Element | null {
   const t = useT()
-  if (points.length !== 8) return null
-  const z = ljCurveZones(toPairs(points))
+  if (points.length !== count) return null
+  const z = ljCurveZones(toPairs(points), count)
   const unlimited = z.end === 1000 && z.antiEnd === 1000
-  const apply = (patch: Partial<LjStickZones>): void => onChange(toPts(ljFitZones(toPairs(points), { ...z, ...patch })))
+  const apply = (patch: Partial<LjStickZones>): void => onChange(toPts(ljFitZones(toPairs(points), { ...z, ...patch }, count)))
   return (
     <div className="card lj-outer-card">
       <h3>{t('sticks.outer')} — {unlimited ? t('sticks.noLimitTitle') : t('sticks.custom')}</h3>
-      <Hint>{t('lj.outerHint')}</Hint>
+      <Hint>{t(hintKey)}</Hint>
       <div className="row spread" style={{ margin: '10px 0' }}>
         <div>
           <div style={{ fontSize: 13.5 }}>{t('sticks.noLimitTitle')}</div>
@@ -3150,11 +3625,42 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
   onReset: () => void
   onCopyToOther: () => void
 }): JSX.Element | null {
-  const t = useT()
   const stick = snap.sticks.find((s) => s.side === side)
+  if (!stick) return null
+  return <ZoneCurveCard count={8} storageKey="sticklabs.ljcurves.v1" hintKey="lj.stickHint"
+    padPts={stick.curvePct.map(([x, y]) => ({ x: Math.round(x * 10), y: Math.round(y * 10) }))}
+    preview={(pts) => pts.map((p) => `${ljPercentToWire(p.x / 10)}/${ljPercentToWire(p.y / 10)}`).join(' · ')}
+    points={points} onChange={onChange} onReset={onReset} onCopyToOther={onCopyToOther} editor={editor} onEditorChange={onEditorChange} />
+}
+
+/**
+ * Curve card for pads whose curve is a fixed number of points on a 0..1000
+ * grid with the deadzones in its end points (LeadJoy 8, HyperStrike 10).
+ * Presets, saved curves, share codes and community curves are 0..255
+ * designs sampled onto those points.
+ */
+function ZoneCurveCard({ count, padPts, points, onChange, onReset, onCopyToOther, editor, onEditorChange, storageKey, hintKey, fixedKey = 'lj.fixedPoints', preview, fixOutput, extraGroups = [] }: {
+  count: number
+  /** Pad-specific preset groups, shown after the shared ones in the same list. */
+  extraGroups?: Array<{ title: string; curves: Array<{ key: string; label: string; pts: CurvePoint[] }> }>
+  fixedKey?: string
+  padPts: Array<{ x: number; y: number }>
+  editor?: CurveEditorDraft
+  onEditorChange: (draft: CurveEditorDraft) => void
+  points: Array<{ x: number; y: number }>
+  onChange: (next: Array<{ x: number; y: number }>) => void
+  onReset: () => void
+  onCopyToOther: () => void
+  storageKey: string
+  hintKey: string
+  preview: (pts: Array<{ x: number; y: number }>) => string
+  /** Pad-specific limits applied to every staged output (e.g. HyperStrike: rising, ends at 1000). */
+  fixOutput?: (pts: CurvePoint[]) => CurvePoint[]
+}): JSX.Element | null {
+  const t = useT()
   const [presets, setPresets] = useState<Array<{ name: string; pts: Array<{ x: number; y: number }> }>>(() => {
     try {
-      const raw = window.localStorage.getItem('sticklabs.ljcurves.v1')
+      const raw = window.localStorage.getItem(storageKey)
       const parsed = raw ? (JSON.parse(raw) as Array<{ name: string; pts: Array<{ x: number; y: number }> }>) : []
       return Array.isArray(parsed)
         ? parsed.filter((p) => typeof p?.name === 'string' && Array.isArray(p?.pts)).slice(0, 20)
@@ -3164,25 +3670,27 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
     }
   })
   const [presetNotice, setPresetNotice] = useState('')
+  const [curvePane, setCurvePane] = useState<'points' | 'presets'>('presets')
   useEffect(() => {
     try {
-      window.localStorage.setItem('sticklabs.ljcurves.v1', JSON.stringify(presets))
+      window.localStorage.setItem(storageKey, JSON.stringify(presets))
     } catch {
       /* storage full/blocked — presets stay session-only */
     }
   }, [presets])
-  if (!stick || points.length !== 8) return null
-  const padPts = stick.curvePct.map(([x, y]) => ({ x: Math.round(x * 10), y: Math.round(y * 10) }))
+  if (points.length !== count) return null
   const dirty = JSON.stringify(points) !== JSON.stringify(padPts)
   const validEditor = editor?.output === JSON.stringify(points) ? editor : undefined
   const designPoints = validEditor?.points ?? points
   const spline = validEditor?.spline ?? false
   const stageCurve = (next: CurvePoint[], smooth = spline): void => {
-    const output = sampleLjDesign(next, smooth)
+    const sampled = sampleLjDesign(next, smooth, count)
+    const output = fixOutput ? fixOutput(sampled) : sampled
     onEditorChange({ points: next.map(p => ({ ...p })), spline: smooth, output: JSON.stringify(output) })
     onChange(output)
   }
-  const zones = ljCurveZones(toPairs(designPoints))
+  // Zones come from the pad-ready output, which always has `count` points.
+  const zones = ljCurveZones(toPairs(points), count)
   const setPoint = (i: number, axis: 'x' | 'y', v: number): void => {
     if (!Number.isFinite(v)) return
     const next = designPoints.map((p) => ({ ...p }))
@@ -3207,34 +3715,46 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
   }
   return (
     <div className="card lj-curve-card">
-      <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.curve')}</span><h3>8 {t('sticks.points')}</h3></div><span className={`pill ${dirty ? 'warn' : 'good'}`}>{dirty ? t('sticks.differs') : t('sticks.matches')}</span></div>
-      <Hint>{t('lj.stickHint')}</Hint>
-      <SplineControl enabled={spline} slots={8} onChange={enabled => stageCurve(designPoints, enabled)} /><div className="curve-edit-layout"><div className="curve-graph-panel"><CurvePlot spline={spline} height={320} points={designPoints} max={1000} overlay={points} onChange={next => stageCurve(next)} />
+      <div className="stick-panel-heading"><div><span className="stick-eyebrow">{t('sticks.curve')}</span><h3>{designPoints.length} {t('sticks.points')}</h3></div><span className={`pill ${dirty ? 'warn' : 'good'}`}>{dirty ? t('sticks.differs') : t('sticks.matches')}</span></div>
+      <Hint>{t(hintKey)}</Hint>
+      <div className="curve-tab-layout"><div className="curve-main">
+      <SplineControl enabled={spline} slots={count} onChange={enabled => stageCurve(designPoints, enabled)} /><div className="curve-edit-layout"><div className="curve-graph-panel"><CurvePlot spline={spline} height={320} points={designPoints} max={1000} overlay={points} onChange={next => stageCurve(next)}
+        maxPoints={DESIGN_MAX_POINTS}
+        onAddPoint={(point) => {
+          const at = designPoints.findIndex((p) => p.x > point.x)
+          if (at > 0 && designPoints.length < DESIGN_MAX_POINTS) stageCurve([...designPoints.slice(0, at), point, ...designPoints.slice(at)])
+        }} />
+      <div className="curve-edit-hint"><span className="curve-hint-symbol">↗</span><span>{t('sticks.curveClickHint')}</span></div>
       <div className="row wrap" style={{ gap: 8, margin: '12px 0' }}>
+        <button className="btn sm" disabled={designPoints.length >= DESIGN_MAX_POINTS} title={t(fixedKey)} onClick={() => stageCurve(addZonePoint(designPoints))}>{t('sticks.addPoint')} ({designPoints.length}/{DESIGN_MAX_POINTS})</button>
         <button className="btn sm ghost" title={t('lj.copyOther')} onClick={onCopyToOther}>{t('sticks.copyCurve')}</button>
-        <button className="btn sm ghost" onClick={() => stageCurve(toPts(ljLinearCurve(zones)))}>{t('sticks.resetCurve')}</button>
+        <button className="btn sm ghost" onClick={() => stageCurve(toPts(ljLinearCurve(zones, count)))}>{t('sticks.resetCurve')}</button>
         <button className="btn sm ghost" disabled={!dirty} onClick={() => { onEditorChange({ points: padPts, spline: false, output: JSON.stringify(padPts) }); onReset() }}>{t('sticks.reload')}</button>
       </div>
-      </div><section className="curve-point-editor">
+      </div></div></div><div className="curve-side"><div className="choice curve-side-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={curvePane === 'points'} className={`choice-btn${curvePane === 'points' ? ' active' : ''}`} onClick={() => setCurvePane('points')}><span className="choice-label">{t('sticks.pointEditor')}</span></button>
+        <button type="button" role="tab" aria-selected={curvePane === 'presets'} className={`choice-btn${curvePane === 'presets' ? ' active' : ''}`} onClick={() => setCurvePane('presets')}><span className="choice-label">{t('sticks.presetsAndSaved')}</span></button>
+      </div>{curvePane === 'points' ? <section className="curve-point-editor">
         <h4>{t('sticks.pointEditor')}</h4>
         <div className="stick-extra-body">
       <table className="tbl" style={{ marginTop: 8 }}>
-        <thead><tr><th>#</th><th>X</th><th>Y</th></tr></thead>
+        <thead><tr><th>#</th><th>X</th><th>Y</th><th /></tr></thead>
         <tbody>
           {designPoints.map((p, i) => (
             <tr key={i}>
               <td className="mono">{i + 1}</td>
               <td><input className="input" type="number" min={0} max={100} step={0.1} value={Number((p.x / 10).toFixed(1))} onChange={(e) => setPoint(i, 'x', Number(e.target.value))} /></td>
               <td><input className="input" type="number" min={0} max={100} step={0.1} value={Number((p.y / 10).toFixed(1))} onChange={(e) => setPoint(i, 'y', Number(e.target.value))} /></td>
+              <td><button className="btn sm ghost" disabled={designPoints.length <= DESIGN_MIN_POINTS} title={t('sticks.removePoint')} onClick={() => stageCurve(designPoints.filter((_, k) => k !== i))}>−</button></td>
             </tr>
           ))}
         </tbody>
       </table>
       <div className="note" style={{ marginTop: 8 }}>
-        {t('sticks.hwPreview')} <span className="mono">{points.map((p) => `${ljPercentToWire(p.x / 10)}/${ljPercentToWire(p.y / 10)}`).join(' · ')}</span>
+        {t('sticks.hwPreview')} <span className="mono">{preview(points)}</span>
       </div>
         </div>
-      </section></div><div className="curve-preset-area"><section className="curve-presets-visible">
+      </section> : <div className="curve-preset-area"><section className="curve-presets-visible">
         <h4>{t('sticks.presetsAndSaved')}</h4>
         <div className="stick-extra-body">
       {CURVE_GROUPS.map((g) => (
@@ -3242,7 +3762,20 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
           <h5>{t(g.titleKey)}</h5>
           <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
             {g.curves.map(([key, c]) => (
-              <button key={key} className="choice-btn" title={c.hint} onClick={() => stageCurve(toPts(ljSampleDesign(c.pts, zones)))}>
+              <button key={key} className="choice-btn" title={c.hint} onClick={() => stageCurve(toPts(ljSampleDesign(c.pts, zones, count)))}>
+                <CurveMiniIcon points={c.pts} />
+                <span className="choice-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {extraGroups.map((g) => (
+        <div key={g.title} className="curve-preset-group">
+          <h5>{g.title}</h5>
+          <div className="row wrap" style={{ gap: 8, margin: '8px 0' }}>
+            {g.curves.map((c) => (
+              <button key={c.key} className="choice-btn" onClick={() => stageCurve(toPts(ljSampleDesign(c.pts, zones, count)))}>
                 <CurveMiniIcon points={c.pts} />
                 <span className="choice-label">{c.label}</span>
               </button>
@@ -3264,9 +3797,6 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
           <SavedCurvePreset key={p.name} preset={p} max={1000} onApply={() => stageCurve(p.pts.map((q) => ({ ...q })))} onRename={(name) => renamePreset(p.name, name)} onDelete={() => setPresets((prev) => prev.filter((q) => q.name !== p.name))} />
         ))}
       </div>
-      <div className="row wrap" style={{ gap: 8 }}>
-        <button className="btn sm" disabled title={t('lj.fixedPoints')}>{t('sticks.addPoint')} (8/8)</button>
-      </div>
       <h5 style={{ marginTop: 14 }}>{t('share.curveTitle')}</h5>
       <ShareCodeRow
         copyLabel={t('share.copyCurve')}
@@ -3274,8 +3804,8 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
         onCopy={async () => encodeCurve({ scale: 1000, pts: designPoints })}
         onImport={async (code) => {
           const shared = decodeCurve(code)
-          // An 8-point LeadJoy design lands as-is; anything else is resampled like the built-in presets.
-          const pts = shared.scale === 1000 && shared.pts.length === 8 ? shared.pts : toPts(ljSampleDesign(rescaleCurve(shared.pts, shared.scale, 255), zones))
+          // A design with this pad's point count lands as-is; anything else is resampled like the built-in presets.
+          const pts = shared.scale === 1000 && shared.pts.length === count ? shared.pts : toPts(ljSampleDesign(rescaleCurve(shared.pts, shared.scale, 255), zones, count))
           stageCurve(pts)
           const name = shared.name && !presets.some((p) => p.name === shared.name) ? shared.name : nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName'))
           setPresets((prev) => [{ name, pts: pts.map((p) => ({ ...p })) }, ...prev].slice(0, 20))
@@ -3284,14 +3814,15 @@ function LjCurveCard({ snap, side, points, onChange, onReset, onCopyToOther, edi
       />
       <CommunityCurves
         shareCode={() => encodeCurve({ scale: 1000, pts: designPoints })}
-        onApply={(pts) => stageCurve(toPts(ljSampleDesign(pts, zones)))}
+        onApply={(pts) => stageCurve(toPts(ljSampleDesign(pts, zones, count)))}
         onSave={(shared, pts) => {
           const name = presets.some((p) => p.name === shared) ? nextCustomPresetName(presets.map((p) => p.name), t('sticks.customCurveName')) : shared
-          setPresets((prev) => [{ name, pts: toPts(ljSampleDesign(pts, zones)) }, ...prev].slice(0, 20))
+          setPresets((prev) => [{ name, pts: toPts(ljSampleDesign(pts, zones, count)) }, ...prev].slice(0, 20))
         }}
       />
         </div>
       </section>
+      </div>}</div>
       </div>
     </div>
   )
@@ -3395,6 +3926,22 @@ export default function App(): JSX.Element {
   // record (each verified with readback); slots switch from the topbar.
   const [ljPath, setLjPath] = useState<string | null>(null)
   const [ljSnap, setLjSnap] = useState<LjSnapshot | null>(null)
+  const [hsPath, setHsPath] = useState<string | null>(null)
+  const [hsSnap, setHsSnap] = useState<HsSnapshot | null>(null)
+  const [hsBusy, setHsBusy] = useState(false)
+  const [hsDraft, setHsDraft] = useState<HsDraft | null>(null)
+  const [hsCurveEditors, setHsCurveEditors] = useState<Record<string, CurveEditorDraft>>({})
+  const [curvePane, setCurvePane] = useState<'points' | 'presets'>('presets')
+  const isHs = !connected && !!hsSnap
+  // Staged HyperStrike changes; the polling rate rides along last (ACTION_START, the pad re-plugs).
+  const hsPlan = useMemo((): string[] => {
+    if (!hsSnap || !hsDraft) return []
+    let names: string[] = []
+    try { names = planWrites(hsSnap, hsDraft).map((p) => p.name) } catch { /* invalid draft: nothing to write */ }
+    if (hsDraft.pollingHz !== hsSnap.pollingHz) names.push('UsbInputPolicy')
+    if (hsDraft.usbMode !== hsSnap.usbModeId) names.push('UsbMode')
+    return names
+  }, [hsSnap, hsDraft])
   const [ljBusy, setLjBusy] = useState(false)
   const [ljSlot, setLjSlot] = useState<0 | 1 | 2>(0)
   const [ljDraft, setLjDraft] = useState<LjDraft>({ buttons: {}, sticks: {}, shapes: {}, mouse: {} })
@@ -3671,11 +4218,124 @@ export default function App(): JSX.Element {
     try { await openPad(path) } finally { setConnectingPath(null) }
   }
 
+  async function readHyperStrike(path: string): Promise<void> {
+    setHsBusy(true)
+    setErr(null)
+    try {
+      const snap = await api().hyperstrikeRead(path)
+      setHsSnap(snap)
+      setHsDraft(hsDraftFrom(snap))
+      setHsPath(path)
+      if (!['overview', 'sticks', 'curves', 'device', 'buttons', 'profiles', 'calibrate', 'lab', 'language', 'theme'].includes(tab)) changeTab('overview')
+      setMsg(null)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setHsBusy(false)
+    }
+  }
+
+  async function writeHyperStrike(edit: HsEdit): Promise<void> {
+    if (!hsPath) return
+    setHsBusy(true)
+    setErr(null)
+    try {
+      const res = await api().hyperstrikeWrite(hsPath, edit)
+      let snap = res.snapshot
+      let path = hsPath
+      if (res.reconnecting) {
+        // The pad drops off USB and comes back changed: find it again and confirm the change.
+        const want = res.reconnecting
+        const found = await findHyperStrikeAgain()
+        snap = found.snap
+        path = found.path
+        if (want.pollingHz !== undefined && snap.pollingHz !== want.pollingHz) {
+          setHsSnap(snap); setHsDraft(hsDraftFrom(snap)); setHsPath(path)
+          throw new Error(t('hs.pollingMismatch').replace('{hz}', String(snap.pollingHz ?? '—')))
+        }
+        if (want.usbMode !== undefined && snap.usbModeId !== want.usbMode) {
+          setHsSnap(snap); setHsDraft(hsDraftFrom(snap)); setHsPath(path)
+          throw new Error(t('hs.modeMismatch'))
+        }
+      }
+      setHsSnap(snap)
+      setHsDraft(hsDraftFrom(snap))
+      setHsPath(path)
+      setSavedFlash(`P${snap.profile}`)
+      window.setTimeout(() => setSavedFlash(null), 1800)
+    } catch (e) {
+      setErr((e as Error).message)
+      try { setHsSnap(await api().hyperstrikeRead(hsPath)) } catch { /* keep the last good snapshot */ }
+    } finally {
+      setHsBusy(false)
+    }
+  }
+
+  /** After a re-plug: rediscover the HyperStrike (any USB mode identity) and read it. */
+  async function findHyperStrikeAgain(): Promise<{ snap: HsSnapshot; path: string }> {
+    setMsg(t('hs.reconnecting'))
+    try {
+      for (let tries = 0; tries < 24; tries++) {
+        await new Promise((r) => window.setTimeout(r, 700))
+        const list = await api().discover()
+        const cand = list.find((c) => identifyModel(c.product, c.productId)?.id === 'HyperStrike')
+        if (!cand) continue
+        try {
+          const snap = await api().hyperstrikeRead(cand.path)
+          setCandidates(list)
+          return { snap, path: cand.path }
+        } catch { /* still enumerating */ }
+      }
+      throw new Error(t('hs.reconnectFailed'))
+    } finally {
+      setMsg(null)
+    }
+  }
+
+  async function switchHsProfile(index: number): Promise<void> {
+    if (!hsPath || !hsSnap || hsSnap.profile === index + 1) return
+    if (hsPlan.length && !window.confirm(t('msg.discardSlot'))) return
+    setHsBusy(true)
+    setErr(null)
+    try {
+      const res = await api().hyperstrikeSwitch(hsPath, index)
+      let snap = res.snapshot
+      let path = hsPath
+      if (res.reconnecting || !snap) ({ snap, path } = await findHyperStrikeAgain())
+      setHsSnap(snap)
+      setHsDraft(hsDraftFrom(snap))
+      setHsPath(path)
+      setHsCurveEditors({})
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setHsBusy(false)
+    }
+  }
+
+  function writeHsDraft(): void {
+    if (!hsDraft || !hsPlan.length) return
+    const list = [...new Set(hsPlan.map((name) => t(HS_OBJ_LABEL[name] ?? name)))].map((label) => `• ${label}`).join('\n')
+    const replug = hsPlan.includes('UsbInputPolicy') || hsPlan.includes('UsbMode') ? `\n\n${t('hs.replugNote')}` : ''
+    if (!window.confirm(`${t('hs.confirm')}\n\n${list}${replug}`)) return
+    setWriting(true)
+    void writeHyperStrike(hsDraft).finally(() => setWriting(false))
+  }
+
   async function openPad(path: string): Promise<void> {
     setErr(null)
+    setHsSnap(null)
+    setHsPath(null)
     try {
       const cand = candidates.find((c) => c.path === path)
       const pre = identifyModel(cand?.product, cand?.productId) ?? null
+      if (pre?.id === 'HyperStrike') {
+        // Own read-only Driver HID path; never the GameSir handshake.
+        setModel(pre)
+        setPid(cand?.productId ?? null)
+        await readHyperStrike(path)
+        return
+      }
       if (pre && pre.support === 'unsupported') {
         // Known-unsupportable (e.g. DLL-driven pads with no HID listener):
         // don't waste 10 s timing out a handshake that cannot answer.
@@ -4031,7 +4691,7 @@ export default function App(): JSX.Element {
   // left-X/Y, right-X/Y, and 0..255 matches the GameSir cross convention
   // (up = smaller Y).
   useEffect(() => {
-    if (!isLj) {
+    if (!isLj && !isHs) {
       setLjLive(null)
       return
     }
@@ -4039,7 +4699,7 @@ export default function App(): JSX.Element {
     let raf = 0
     const poll = (): void => {
       const pads = Array.from(navigator.getGamepads()).filter((p): p is Gamepad => !!p && p.connected)
-      const pad = pads.find((p) => /controller|gamepad|360|xbox|saber|leadjoy/i.test(p.id)) ?? pads[0] ?? null
+      const pad = (isHs ? pads.find((p) => /hyperstrike/i.test(p.id)) : undefined) ?? pads.find((p) => /controller|gamepad|360|xbox|saber|leadjoy/i.test(p.id)) ?? pads[0] ?? null
       if (pad) {
         const a = pad.axes
         setLjLive({ lx: to255(a[0] ?? 0), ly: to255(a[1] ?? 0), rx: to255(a[2] ?? 0), ry: to255(a[3] ?? 0) })
@@ -4050,7 +4710,7 @@ export default function App(): JSX.Element {
     }
     raf = requestAnimationFrame(poll)
     return () => cancelAnimationFrame(raf)
-  }, [isLj])
+  }, [isLj, isHs])
 
   // Center guard: while measuring, track the worst rest deviation of the
   // current stick; the countdown then proposes a Start % that covers it.
@@ -4248,9 +4908,9 @@ export default function App(): JSX.Element {
     const id = window.setTimeout(() => setSavedFlash(null), 1800)
     return () => window.clearTimeout(id)
   }, [savedAt])
-  const staged = connected && (isLj ? ljDirty : dirty)
+  const staged = (connected && (isLj ? ljDirty : dirty)) || (isHs && hsPlan.length > 0)
   // editRev changes on every edit (the blob is edited in place), so the count follows edits, not live samples.
-  const liveCount = useMemo(() => (staged && !isLj ? changeCount() : null), [staged, isLj, editRev, blob, padBytes, modelId])
+  const liveCount = useMemo(() => (staged && !isLj ? (isHs ? hsPlan.length : changeCount()) : null), [staged, isLj, isHs, hsPlan, editRev, blob, padBytes, modelId])
   const rolledCount = useTween(liveCount ?? 0, 300, false)
   const bar = usePresence<'staged' | 'writing' | 'saved'>(staged ? (writing ? 'writing' : 'staged') : savedFlash ? 'saved' : null)
   // The sidebar highlight glides to the active item.
@@ -4299,7 +4959,7 @@ export default function App(): JSX.Element {
                   <h4>{t('nav.aim')}</h4>
                   {item('sticks', 'sticks', t('nav.sticks'))}
                   {item('curves', 'curves', t('nav.curves'))}
-                  {!isLj && item('shift', 'shift', t('nav.shift'))}
+                  {!isLj && !isHs && item('shift', 'shift', t('nav.shift'))}
                 </div>
                 <div className="nav-group">
                   <h4>{t('nav.controls')}</h4>
@@ -4399,8 +5059,8 @@ export default function App(): JSX.Element {
         </div>
         <div className="status-bar">
           <div className="status-row">
-            <span className={`dot ${connected ? 'good' : 'bad'}`} />
-            {connected ? t('side.connected') : t('side.disconnected')}
+            <span className={`dot ${connected || isHs ? 'good' : 'bad'}`} />
+            {connected || isHs ? t('side.connected') : t('side.disconnected')}
             {appVersion && <span style={{ color: 'var(--text-3)' }}>v{appVersion}</span>}
           </div>
           <div className="status-row" style={{ marginTop: 8 }}>
@@ -4446,6 +5106,11 @@ export default function App(): JSX.Element {
             <h2>Stick Labs</h2>
           </div>
           <div className="row" style={{ gap: 8 }}>
+            {isHs && hsSnap && [1, 2, 3, 4].map((s) => (
+              <button key={s} className={`choice-btn${s === hsSnap.profile ? ' active' : ''}`} title={hsSnap.profiles[s - 1]?.name || undefined} disabled={hsBusy} onClick={() => void switchHsProfile(s - 1)}>
+                <span className="choice-label">P{s}</span>
+              </button>
+            ))}
             {connected && (isLj
               ? (['Main', 'Sub1', 'Sub2'] as const).map((name, i) => (
                   <button
@@ -4495,7 +5160,16 @@ export default function App(): JSX.Element {
           <div className="content-frame" ref={frameRef}>
           {err && <div className="note bad">{err}</div>}
           {msg && <div className="note">{msg}</div>}
-          {!connected && (
+          {isHs && hsSnap && hsDraft && hsPath && <>
+            <div className="stick-selector" style={{ display: tab === 'sticks' || tab === 'curves' ? undefined : 'none' }}>
+              <StickCards which={which} onPick={setWhich} />
+              <span className="pill">{hsDraft.stickBits}-bit · {bitsToLevels(hsDraft.stickBits).toLocaleString()} {t('device.levels')}</span>
+            </div>
+            {tab === 'overview' && <HsOverviewPanel snap={hsSnap} draft={hsDraft} onOpen={(next) => setTab(next)} />}
+            {tab === 'buttons' && <HsButtonsPage snap={hsSnap} draft={hsDraft} setDraft={setHsDraft} busy={hsBusy} />}
+            <HsPages tab={tab} snap={hsSnap} draft={hsDraft} setDraft={setHsDraft} which={which} busy={hsBusy} live={ljLive} editors={hsCurveEditors} onEditorChange={(key, d) => setHsCurveEditors((prev) => ({ ...prev, [key]: d }))} />
+          </>}
+          {!connected && !hsSnap && (
             <div className="msg"><h3>{t('msg.connect')}</h3><p>{t('msg.models')} {t('msg.connectBody')}</p></div>
           )}
           {isLj && (
@@ -4710,6 +5384,7 @@ export default function App(): JSX.Element {
 <div className="card stick-curve-card">
                     <h3>{t('sticks.curve')} — {design.length} {t('sticks.points')}</h3>
                     <Hint>{t('sticks.curveHint')}</Hint>
+                    <div className="curve-tab-layout"><div className="curve-main">
                     <SplineControl enabled={spline} slots={5} onChange={enabled => { setSplineModes(prev => ({ ...prev, [splineKey]: enabled })); stageDesign(design.length >= 2 ? design : padCurve, enabled) }} />
 <div className="curve-adjust">
                       <span className="label">{t('sticks.curveAdjust')}</span>
@@ -4745,7 +5420,10 @@ export default function App(): JSX.Element {
                       <div style={{ flex: 1 }} />
                       <button className="btn sm ghost" disabled={busy} onClick={() => void reloadCurveFromPad()}>{t('sticks.reload')}</button>
                     </div>
-                    </div><section className={`curve-point-editor${curvePreview ? ' is-inactive' : ''}`} aria-disabled={curvePreview ? true : undefined}>
+                    </div></div></div><div className="curve-side"><div className="choice curve-side-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={curvePane === 'points'} className={`choice-btn${curvePane === 'points' ? ' active' : ''}`} onClick={() => setCurvePane('points')}><span className="choice-label">{t('sticks.pointEditor')}</span></button>
+        <button type="button" role="tab" aria-selected={curvePane === 'presets'} className={`choice-btn${curvePane === 'presets' ? ' active' : ''}`} onClick={() => setCurvePane('presets')}><span className="choice-label">{t('sticks.presetsAndSaved')}</span></button>
+      </div>{curvePane === 'points' ? <section className={`curve-point-editor${curvePreview ? ' is-inactive' : ''}`} aria-disabled={curvePreview ? true : undefined}>
                       {curvePreview && <p className="curve-inactive-note" role="status">{t('sticks.pointsInactive')}</p>}
                       <h4>{t('sticks.pointEditor')}</h4>
                       <div className="stick-extra-body">
@@ -4768,7 +5446,7 @@ export default function App(): JSX.Element {
                       {t('sticks.hwPreview')} <span className="mono">{quantized.map((q) => `${q.x}/${q.y}`).join(' · ')}</span>
                     </div>
                       </div>
-                    </section></div><div className="curve-preset-area"><section className="curve-presets-visible">
+                    </section> : <div className="curve-preset-area"><section className="curve-presets-visible">
                       <h4>{t('sticks.presetsAndSaved')}</h4>
                       <div className="stick-extra-body">
                     {CURVE_GROUPS.map((g) => (
@@ -4842,6 +5520,7 @@ export default function App(): JSX.Element {
                     />
                       </div>
                     </section>
+                    </div>}</div>
                     </div>
                   </div>
               </div>}
@@ -5063,7 +5742,10 @@ export default function App(): JSX.Element {
             </div>
             </>
           )}
-          {tab === 'profiles' && (
+          {tab === 'profiles' && isHs && hsSnap && hsDraft && (
+            <HsProfilesCard snap={hsSnap} names={hsDraft.profileNames} busy={hsBusy} onRename={(i, name) => setHsDraft({ ...hsDraft, profileNames: hsDraft.profileNames.map((n, k) => (k === i ? name : n)) })} onSwitch={(i) => void switchHsProfile(i)} />
+          )}
+          {tab === 'profiles' && !isHs && (
             isLj ? (
               <div className="msg">
                 <h3>{modelName} — {t('lj.profilesLockedTitle')}</h3>
@@ -5073,7 +5755,8 @@ export default function App(): JSX.Element {
               <ProfilesPanel connected={connected} activeSlot={info?.currentProfile ?? null} locked={locked} modelId={modelId} modelLen={modelLen} dumpLength={model?.dumpLength ?? 0} modelName={model?.marketingName ?? null} />
             )
           )}
-          {tab === 'calibrate' && (
+          {tab === 'calibrate' && isHs && hsPath && <HsCalibrationPanel path={hsPath} live={ljLive} onActiveChange={setCalibrationRunning} />}
+          {tab === 'calibrate' && !isHs && (
             connected && model?.support === 'full' ? (
               isLj
                 ? <LeadJoyCalibrationPanel live={ljLive} onOpenSticks={() => setTab('sticks')} />
@@ -5108,7 +5791,7 @@ export default function App(): JSX.Element {
         </div>
         {bar && (() => {
           const mode = bar.value
-          const where = mode === 'saved' ? savedFlash ?? '' : isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
+          const where = mode === 'saved' ? savedFlash ?? '' : isHs ? `P${hsSnap?.profile ?? 1}` : isLj ? (['Main', 'Sub1', 'Sub2'] as const)[ljSlot] : slot === SHIFT_PROFILE ? 'Shift' : `P${slot}`
           const text = mode === 'saved' ? t('bar.saved') : mode === 'writing' ? t('bar.writing') : liveCount === null ? t('bar.unsaved') : t(liveCount === 1 ? 'bar.change' : 'bar.changes').replace('{n}', String(Math.max(1, Math.round(rolledCount))))
           return <div className={`write-bar ${mode}${bar.leaving ? ' leaving' : ''}`} role="status">
             {mode === 'writing' && <span className="write-bar-progress" aria-hidden="true" />}
@@ -5118,10 +5801,10 @@ export default function App(): JSX.Element {
             <span className="write-bar-text">{text.replace('{slot}', where)}</span>
             {mode !== 'saved' && <button
               className="btn primary"
-              disabled={mode === 'writing' || (isLj ? ljBusy : busy || locked || calibrationRunning)}
-              onClick={() => { if (isLj) { setWriting(true); void writeLeadJoyDraft().finally(() => setWriting(false)) } else openReview() }}
+              disabled={mode === 'writing' || (isHs ? hsBusy : isLj ? ljBusy : busy || locked || calibrationRunning)}
+              onClick={() => { if (isHs) writeHsDraft(); else if (isLj) { setWriting(true); void writeLeadJoyDraft().finally(() => setWriting(false)) } else openReview() }}
             >
-              {mode === 'writing' ? t('common.working') : isLj ? t('top.write') : t('bar.review')}
+              {mode === 'writing' ? t('common.working') : isLj || isHs ? t('top.write') : t('bar.review')}
             </button>}
           </div>
         })()}

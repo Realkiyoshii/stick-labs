@@ -903,10 +903,13 @@ export function ljNormZones(zones: LjStickZones): LjStickZones {
   return z
 }
 
-/** Read the four zones out of a curve given on the 0.1% grid. */
-export function ljCurveZones(curve: ReadonlyArray<readonly [number, number]>): LjStickZones {
-  if (curve.length !== LJ_CURVE_POINTS) {
-    throw new Error(`leadjoy: curve has ${curve.length} points, expected ${LJ_CURVE_POINTS}`)
+/**
+ * Read the four zones out of a curve given on the 0.1% grid. `count` defaults
+ * to the LeadJoy's 8 points; the HyperStrike uses the same model with 10.
+ */
+export function ljCurveZones(curve: ReadonlyArray<readonly [number, number]>, count = LJ_CURVE_POINTS): LjStickZones {
+  if (curve.length !== count) {
+    throw new Error(`leadjoy: curve has ${curve.length} points, expected ${count}`)
   }
   const first = curve[0]
   const last = curve[curve.length - 1]
@@ -916,10 +919,11 @@ export function ljCurveZones(curve: ReadonlyArray<readonly [number, number]>): L
 /** Apply zones to a curve, keeping the interior inputs ordered inside them. */
 export function ljFitZones(
   curve: ReadonlyArray<readonly [number, number]>,
-  zones: LjStickZones
+  zones: LjStickZones,
+  count = LJ_CURVE_POINTS
 ): Array<[number, number]> {
-  if (curve.length !== LJ_CURVE_POINTS) {
-    throw new Error(`leadjoy: curve has ${curve.length} points, expected ${LJ_CURVE_POINTS}`)
+  if (curve.length !== count) {
+    throw new Error(`leadjoy: curve has ${curve.length} points, expected ${count}`)
   }
   const z = ljNormZones(zones)
   const out: Array<[number, number]> = curve.map((p) => [p[0], p[1]])
@@ -931,12 +935,12 @@ export function ljFitZones(
   return out
 }
 
-/** Straight response between the zones' floor and ceiling (8 points). */
-export function ljLinearCurve(zones: LjStickZones): Array<[number, number]> {
+/** Straight response between the zones' floor and ceiling (8 points unless `count` says otherwise). */
+export function ljLinearCurve(zones: LjStickZones, count = LJ_CURVE_POINTS): Array<[number, number]> {
   const z = ljNormZones(zones)
   const out: Array<[number, number]> = []
-  for (let i = 0; i < LJ_CURVE_POINTS; i++) {
-    const u = i / (LJ_CURVE_POINTS - 1)
+  for (let i = 0; i < count; i++) {
+    const u = i / (count - 1)
     out.push([Math.round(z.start + u * (z.end - z.start)), Math.round(z.antiStart + u * (z.antiEnd - z.antiStart))])
   }
   return out
@@ -948,14 +952,15 @@ export function ljLinearCurve(zones: LjStickZones): Array<[number, number]> {
  */
 export function ljSampleDesign(
   design: ReadonlyArray<{ x: number; y: number }>,
-  zones: LjStickZones
+  zones: LjStickZones,
+  count = LJ_CURVE_POINTS
 ): Array<[number, number]> {
   const z = ljNormZones(zones)
   const pts = [...design]
     .filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))
     .map((p) => ({ x: Math.max(0, Math.min(255, p.x)), y: Math.max(0, Math.min(255, p.y)) }))
     .sort((a, b) => a.x - b.x)
-  if (pts.length < 2) return ljLinearCurve(z)
+  if (pts.length < 2) return ljLinearCurve(z, count)
   const at = (x: number): number => {
     if (x <= pts[0].x) return pts[0].y
     for (let i = 1; i < pts.length; i++) {
@@ -969,8 +974,8 @@ export function ljSampleDesign(
     return pts[pts.length - 1].y
   }
   const out: Array<[number, number]> = []
-  for (let i = 0; i < LJ_CURVE_POINTS; i++) {
-    const u = i / (LJ_CURVE_POINTS - 1)
+  for (let i = 0; i < count; i++) {
+    const u = i / (count - 1)
     const dx = u * 255
     const dy = at(dx)
     out.push([

@@ -145,6 +145,20 @@ export const MODELS: ReadonlyArray<ControllerModel> = [
     dumpLength: 680,
     support: 'detect-only',
     supportNote: 'Third protocol family (680-byte profile, 32-byte single-byte stick packets, no resolution/anti-jitter bytes, 0xFD calibration). Layout mapped from the GameSir bundle — tuning locked until a live dump proves it.'
+  },
+  {
+    id: 'HyperStrike',
+    marketingName: 'HyperStrike',
+    vendorId: 0x0170,
+    usagePage: 0xff60,
+    usage: 0x61,
+    pids: [0xbb80],
+    productHints: ['HyperStrike'],
+    reportRates: [],
+    profileLength: 0,
+    dumpLength: 0,
+    support: 'detect-only',
+    supportNote: 'Read-only: Stick Labs reads polling, sampling, resolution and curves over the HyperStrike Driver interface (proven on fw 2.66). Nothing is written.'
   }
 ]
 

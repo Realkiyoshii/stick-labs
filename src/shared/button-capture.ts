@@ -1,10 +1,12 @@
 /** Input capture translates into existing picker targets; it never writes hardware. */
 import { KEY_TARGETS } from './keymap'
 import { LJ_HID_KEYS } from './leadjoy'
-export type CaptureFamily = 'gamesir' | 'leadjoy'
+export type CaptureFamily = 'gamesir' | 'leadjoy' | 'hyperstrike'
 const padTargets = {
   gamesir: [9, 10, 11, 12, 5, 6, 19, 20, 14, 15, 7, 8, 1, 2, 3, 4, 13],
-  leadjoy: [1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 19, 20]
+  leadjoy: [1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 19, 20],
+  // Standard gamepad order → HyperStrike button codes (A B X Y LB RB LT RT View Menu LS RS ↑ ↓ ← → Guide).
+  hyperstrike: [1, 2, 3, 4, 9, 10, 11, 12, 15, 16, 13, 14, 5, 6, 7, 8, 17]
 }
 export function capturedPadTarget(family: CaptureFamily, index: number): number | null {
   return padTargets[family][index] ?? null
@@ -30,7 +32,7 @@ for (let i = 1; i <= 12; i++) codeLabels['F' + i] = 'F' + i
 export function capturedKeyTarget(family: CaptureFamily, code: string): number | null {
   let label = codeLabels[code]
   if (!label) return null
-  if (family === 'leadjoy') {
+  if (family === 'leadjoy' || family === 'hyperstrike') {
     const key = LJ_HID_KEYS.find(k => k.label === label)
     return key ? 1000 + key.code : null
   }

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DeepPollResult } from '../shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '../shared/leadjoy'
+import type { HsCalStep, HsCalType, HsEdit, HsSnapshot, HsWriteResult } from '../shared/hyperstrike'
 
 async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   const result = (await ipcRenderer.invoke(channel, ...args)) as {
@@ -51,6 +52,13 @@ const api = {
     call<{ verified: boolean; restored: boolean }>('leadjoy:writeButton', req),
   leadjoyWriteStick: (req: { path: string; slot: number; side: number; patch: LjStickPatch }) =>
     call<{ verified: boolean; restored: boolean }>('leadjoy:writeStick', req),
+  hyperstrikeRead: (path: string) => call<HsSnapshot>('hyperstrike:read', path),
+  hyperstrikeWrite: (path: string, edit: HsEdit) => call<HsWriteResult>('hyperstrike:write', path, edit),
+  hyperstrikeSwitch: (path: string, index: number) => call<{ snapshot: HsSnapshot | null; reconnecting: boolean }>('hyperstrike:switch', path, index),
+  hyperstrikeCalibrate: (path: string, step: HsCalStep, type: HsCalType) => call<void>('hyperstrike:calibrate', path, step, type),
+  hyperstrikeCalibrateCenter: (path: string) => call<void>('hyperstrike:calibrateCenter', path),
+  hyperstrikeFineTuneRead: (path: string) => call<number[]>('hyperstrike:fineTuneRead', path),
+  hyperstrikeFineTuneWrite: (path: string, values: number[]) => call<number[]>('hyperstrike:fineTuneWrite', path, values),
   on: (channel: string, fn: (payload: any) => void): (() => void) => {
     const listener = (_e: unknown, payload: unknown): void => fn(payload)
     ipcRenderer.on(channel, listener)

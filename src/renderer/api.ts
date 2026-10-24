@@ -8,6 +8,7 @@ export interface Candidate {
 }
 import type { DeepPollResult } from '@shared/deeppoll'
 import type { LjButtonTarget, LjSnapshot, LjStickPatch } from '@shared/leadjoy'
+import type { HsCalStep, HsCalType, HsEdit, HsSnapshot, HsWriteResult } from '@shared/hyperstrike'
 export interface DeviceInfo {
   firmware: string
   dongle: string
@@ -95,6 +96,18 @@ export interface LabApi {
   leadjoyWriteButton(req: { path: string; slot: number; id: number; target: LjButtonTarget | null }): Promise<{ verified: boolean; restored: boolean }>
   /** LeadJoy stick image write (verified read-modify-write of a validated patch). */
   leadjoyWriteStick(req: { path: string; slot: number; side: number; patch: LjStickPatch }): Promise<{ verified: boolean; restored: boolean }>
+  /** HyperStrike: read-only settings snapshot of the Driver interface. */
+  hyperstrikeRead(path: string): Promise<HsSnapshot>
+  /** HyperStrike: write changed objects, read each back, then save to flash. */
+  hyperstrikeWrite(path: string, edit: HsEdit): Promise<HsWriteResult>
+  /** HyperStrike: switch the active profile (0..3); `reconnecting` when that slot re-plugs the pad. */
+  hyperstrikeSwitch(path: string, index: number): Promise<{ snapshot: HsSnapshot | null; reconnecting: boolean }>
+  /** HyperStrike calibration step, exactly as the Hub sends it. */
+  hyperstrikeCalibrate(path: string, step: HsCalStep, type: HsCalType): Promise<void>
+  /** HyperStrike automatic center pass (begin, three samples, end). */
+  hyperstrikeCalibrateCenter(path: string): Promise<void>
+  hyperstrikeFineTuneRead(path: string): Promise<number[]>
+  hyperstrikeFineTuneWrite(path: string, values: number[]): Promise<number[]>
   on(channel: string, fn: (payload: never) => void): () => void
 }
 
