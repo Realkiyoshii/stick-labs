@@ -1,0 +1,38 @@
+name: community-curves
+
+# Community curves: check each submitted curve and publish the live ones to
+# curves.json on the community-data branch. The schedule picks up 👍/👎
+# reactions, which don't trigger workflows on their own.
+on:
+  issues:
+    types: [opened, edited, reopened, closed, labeled, unlabeled, deleted]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: community-curves
+  cancel-in-progress: false
+
+jobs:
+  curves:
+    if: github.event_name != 'issues' || contains(github.event.issue.labels.*.name, 'community-curve')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the submission
+        if: github.event_name == 'issues' && contains(fromJSON('["opened","edited","reopened"]'), github.event.action)
+        run: node bots/community-bot.mjs validate ${{ github.event.issue.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the feed
+        run: node bots/community-bot.mjs rebuild
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

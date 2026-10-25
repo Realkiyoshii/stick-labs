@@ -1,0 +1,51 @@
+name: youtube-live
+
+# Publishes whether the channel is live on YouTube as live.json on the
+# `status` branch, for the web build's YouTube button (browsers can't read
+# YouTube directly; the desktop app checks it itself). Only pushes when the
+# status changes, as a single force-pushed commit, so the branch never grows.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: youtube-live
+  cancel-in-progress: false
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read the live page
+        id: read
+        run: |
+          if node bots/youtube-live.mjs > live.json; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            cat live.json
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish when it changed
+        if: steps.read.outputs.ok == 'true'
+        run: |
+          if git fetch --depth 1 origin status 2>/dev/null && git show FETCH_HEAD:live.json > old.json 2>/dev/null && cmp -s old.json live.json; then
+            echo "No change"
+            exit 0
+          fi
+          mkdir pub && cp live.json pub/ && cd pub
+          git init -q -b status
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add live.json
+          git commit -qm "YouTube live status"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
